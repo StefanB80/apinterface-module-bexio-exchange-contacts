@@ -1,0 +1,13 @@
+{
+  "name": "apinterface-module-bexio-exchange-contacts",
+  "version": "1.0.0-bec",
+  "private": true,
+  "description": "APInterface module: bexio contacts to Exchange (on-prem EWS)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ews-javascript-api": "^0.15.3"
+  }
+}

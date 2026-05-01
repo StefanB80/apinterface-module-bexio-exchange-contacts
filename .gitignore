@@ -1,0 +1,4 @@
+node_modules/
+var/
+.deploy.lock
+.deploy.log

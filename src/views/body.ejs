@@ -1,0 +1,92 @@
+<%
+const s = setup || {};
+const ctxCompanyId = (typeof formCompanyId !== 'undefined' && formCompanyId !== null && !Number.isNaN(Number(formCompanyId))) ? Number(formCompanyId) : Number(companyId);
+const err = (typeof query !== 'undefined' && query.error) ? String(query.error) : '';
+const ok = (typeof query !== 'undefined' && query.success);
+const bexioUrl = s.bexioBaseUrl || 'https://api.bexio.com';
+const ewsUrlVal = s.ewsUrl || '';
+const ewsUserVal = s.ewsUser || '';
+const exVer = s.exchangeVersion || 'Exchange2016';
+function formatIso(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString('de-CH');
+}
+%>
+<div class="grid-1">
+  <% if (err) { %><div class="alert"><%= err %></div><% } %>
+  <% if (ok) { %>
+  <div class="alert ok" data-auto-dismiss="1">Aktion erfolgreich ausgefuehrt.</div>
+  <% } %>
+
+  <div class="card">
+    <h2>bexio ↔ Exchange (EWS)</h2>
+    <p class="muted">
+      Richtung: <strong>bexio → Exchange</strong> (Kontakte im Postfachordner «Kontakte»). Exchange On-Premises via
+      <strong>EWS</strong> (<code>…/EWS/Exchange.asmx</code>). Zugangsdaten gelten pro Firma unter
+      <code>var/company-&lt;id&gt;.json</code>; Zuordnung bexio-ID → Exchange-Item unter
+      <code>var/company-&lt;id&gt;-bexio-exchange-contact-map.json</code>.
+      <strong>NTLM</strong> und erweiterte Auth: ggf. <code>@ewsjs/xhr</code> nachruesten (aktuell <code>WebCredentials</code>).
+    </p>
+    <% if (s.lastSyncSummary) { %>
+    <p class="muted">Letzter Lauf: <strong><%= s.lastSyncSummary %></strong> <% if (s.lastSyncAt) { %>(<%= formatIso(s.lastSyncAt) %>)<% } %></p>
+    <% } %>
+    <% if (s.lastSyncLog) { %>
+    <details style="margin-bottom:1rem;">
+      <summary class="muted">Protokoll</summary>
+      <pre style="white-space:pre-wrap;font-size:.85rem;margin-top:.5rem;"><%= s.lastSyncLog %></pre>
+    </details>
+    <% } %>
+
+    <form method="post" action="<%= modulePath %>/setup" class="grid-1" autocomplete="on">
+      <input type="hidden" name="setupCompanyId" value="<%= ctxCompanyId %>">
+
+      <h3>bexio</h3>
+      <div>
+        <label for="bexioBaseUrl">API Basis-URL</label>
+        <input id="bexioBaseUrl" name="bexioBaseUrl" type="url" value="<%= bexioUrl %>" placeholder="https://api.bexio.com" required>
+      </div>
+      <div>
+        <label for="bexioToken">Persoenlicher API-Token</label>
+        <input id="bexioToken" name="bexioToken" type="password" value="" autocomplete="off" placeholder="<%= s.bexioTokenMasked ? '(gesetzt, ' + s.bexioTokenMasked + ')' : (s.bexioTokenSet ? '(gesetzt)' : 'Token einfuegen') %>">
+      </div>
+      <div class="row-actions" style="gap:.5rem;">
+        <button type="submit" name="action" value="test_bexio" class="button secondary small">bexio testen</button>
+      </div>
+
+      <h3>Exchange (EWS)</h3>
+      <div>
+        <label for="ewsUrl">EWS Endpoint</label>
+        <input id="ewsUrl" name="ewsUrl" type="url" value="<%= ewsUrlVal %>" placeholder="https://mail.example.com/EWS/Exchange.asmx" required>
+      </div>
+      <div>
+        <label for="ewsUser">Benutzer (z. B. DOMAIN\\user oder UPN)</label>
+        <input id="ewsUser" name="ewsUser" type="text" value="<%= ewsUserVal %>" autocomplete="username" required>
+      </div>
+      <div>
+        <label for="ewsPassword">Passwort</label>
+        <input id="ewsPassword" name="ewsPassword" type="password" value="" autocomplete="current-password" placeholder="<%= s.ewsPasswordSet ? '(unveraendert lassen)' : 'Passwort' %>">
+      </div>
+      <div>
+        <label for="exchangeVersion">Exchange-Version (EWS)</label>
+        <select id="exchangeVersion" name="exchangeVersion">
+          <% ['Exchange2016','Exchange2013_SP1','Exchange2013','Exchange2015','Exchange2010_SP2'].forEach(function(v) { %>
+          <option value="<%= v %>" <%= exVer === v ? 'selected' : '' %>><%= v %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="row-actions" style="gap:.5rem;">
+        <button type="submit" name="action" value="test_ews" class="button secondary small">EWS testen</button>
+      </div>
+
+      <div class="row-actions" style="margin-top:1rem;gap:.5rem;">
+        <button type="submit" name="action" value="save" class="button">Speichern</button>
+        <button type="submit" name="action" value="sync" class="button">Jetzt synchronisieren</button>
+      </div>
+    </form>
+    <% if (manifest && manifest.version) { %>
+    <p class="muted" style="margin-top:1rem;">Modulversion <%= manifest.version %><% if (s.moduleVersion) { %> · Paket <%= s.moduleVersion %><% } %></p>
+    <% } %>
+  </div>
+</div>

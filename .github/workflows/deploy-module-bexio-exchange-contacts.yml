@@ -1,0 +1,98 @@
+name: Deploy Module bexio-exchange-contacts
+
+on:
+  push:
+    tags:
+      - 'v*-bec'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release-Tag (z. B. v1.0.0-bec). Bei manuellem Lauf erforderlich.'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate secrets presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          check_secret() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "Missing required secret: $name" >&2
+              missing=1
+            fi
+          }
+          check_secret "BEC_SSH_HOST" "${{ secrets.BEC_SSH_HOST }}"
+          check_secret "BEC_SSH_PORT" "${{ secrets.BEC_SSH_PORT }}"
+          check_secret "BEC_SSH_USER" "${{ secrets.BEC_SSH_USER }}"
+          check_secret "BEC_SSH_PRIVATE_KEY" "${{ secrets.BEC_SSH_PRIVATE_KEY }}"
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Secrets are present"
+
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.BEC_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          if [ -n "${{ secrets.BEC_KNOWN_HOSTS }}" ]; then
+            printf '%s\n' "${{ secrets.BEC_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H -p "${{ secrets.BEC_SSH_PORT }}" "${{ secrets.BEC_SSH_HOST }}" >> ~/.ssh/known_hosts
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Resolve deploy tag
+        id: deploy_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            T="${{ inputs.tag }}"
+          else
+            T="${{ github.ref_name }}"
+          fi
+          if ! [[ "$T" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-bec$ ]]; then
+            echo "Ungültiger Tag (erwartet vX.Y.Z-bec), erhalten: $T" >&2
+            exit 1
+          fi
+          echo "tag=$T" >> "$GITHUB_OUTPUT"
+
+      - name: SSH connectivity test
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.BEC_SSH_PORT }}" -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes "${{ secrets.BEC_SSH_USER }}@${{ secrets.BEC_SSH_HOST }}" 'echo SSH_OK'
+
+      - name: Remote preflight (install root exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.BEC_SSH_PORT }}" -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes "${{ secrets.BEC_SSH_USER }}@${{ secrets.BEC_SSH_HOST }}" \
+            'test -d /opt/apps/apinterface/bexio-exchange-contacts && echo MODULE_ROOT_OK'
+
+      - name: Deploy via server deploy.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.deploy_tag.outputs.tag }}"
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.BEC_SSH_PORT }}" -o BatchMode=yes -o ConnectTimeout=60 -o StrictHostKeyChecking=yes "${{ secrets.BEC_SSH_USER }}@${{ secrets.BEC_SSH_HOST }}" \
+            "/opt/apps/apinterface/bexio-exchange-contacts/bin/deploy.sh \"$TAG\""
+
+      - name: Install production dependencies in active release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.deploy_tag.outputs.tag }}"
+          ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.BEC_SSH_PORT }}" -o BatchMode=yes -o ConnectTimeout=120 -o StrictHostKeyChecking=yes "${{ secrets.BEC_SSH_USER }}@${{ secrets.BEC_SSH_HOST }}" \
+            "set -euo pipefail; REL=/opt/apps/apinterface/bexio-exchange-contacts/releases/$TAG; test -d \"\$REL\"; cd \"\$REL\"; npm ci --omit=dev; test -d \"\$REL/node_modules/ews-javascript-api\"; echo \"ews OK in \$REL\""
