@@ -21,11 +21,11 @@ const moduleManifest = {
   },
   visual: {
     type: "dual-system",
-    interaction: { dragAndDrop: false, planned: false },
-    circle: { center: { x: 320, y: 220 }, radius: 120 },
+    interaction: { dragAndDrop: true, planned: true },
+    circle: { center: { x: 450, y: 270 }, radius: 195 },
     apps: [
-      { id: "bexio", label: "bexio", icon: "bexio", position: { x: 180, y: 220 } },
-      { id: "exchange", label: "Exchange", icon: "exchange", position: { x: 460, y: 220 } }
+      { id: "bexio", label: "bexio", icon: "bexio", position: { x: 230, y: 270 } },
+      { id: "exchange", label: "Exchange", icon: "exchange", position: { x: 670, y: 270 } }
     ],
     dataStreams: [
       {
@@ -33,7 +33,7 @@ const moduleManifest = {
         label: "Kontakte (bexio → Exchange)",
         source: "bexio",
         target: "exchange",
-        midpoint: { x: 320, y: 170 }
+        midpoint: { x: 450, y: 195 }
       }
     ]
   }

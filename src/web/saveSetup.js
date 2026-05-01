@@ -124,10 +124,19 @@ async function loadSetup(releaseDir, companyId) {
     ewsPassword: "",
     exchangeVersion: "Exchange2016",
     fieldMapping: { ...DEFAULT_FIELD_MAPPING },
+    defaultFieldMapping: { ...DEFAULT_FIELD_MAPPING },
     updatedAt: "",
     lastSyncAt: "",
     lastSyncSummary: "",
     lastSyncLog: "",
+    probeBexioOk: false,
+    probeBexioAt: "",
+    probeBexioSummary: "",
+    probeBexioLog: "",
+    probeEwsOk: false,
+    probeEwsAt: "",
+    probeEwsSummary: "",
+    probeEwsLog: "",
     moduleVersion: readPackageVersion(releaseDir)
   };
   if (!id) {
@@ -138,6 +147,15 @@ async function loadSetup(releaseDir, companyId) {
     const raw = await fsp.readFile(filePath, "utf8");
     const parsed = JSON.parse(raw);
     const merged = { ...empty, ...parsed, fieldMapping: normalizeFieldMapping(parsed.fieldMapping) };
+    merged.defaultFieldMapping = { ...DEFAULT_FIELD_MAPPING };
+    merged.probeBexioOk = Boolean(parsed.probeBexioOk);
+    merged.probeBexioAt = trim(parsed.probeBexioAt || "");
+    merged.probeBexioSummary = trim(parsed.probeBexioSummary || "");
+    merged.probeBexioLog = String(parsed.probeBexioLog || "");
+    merged.probeEwsOk = Boolean(parsed.probeEwsOk);
+    merged.probeEwsAt = trim(parsed.probeEwsAt || "");
+    merged.probeEwsSummary = trim(parsed.probeEwsSummary || "");
+    merged.probeEwsLog = String(parsed.probeEwsLog || "");
     merged.moduleVersion = readPackageVersion(releaseDir);
     if (merged.bexioToken) {
       merged.bexioTokenMasked = maskSecret(merged.bexioToken);
@@ -221,9 +239,17 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       exchangeVersion,
       fieldMapping,
       updatedAt: new Date().toISOString(),
-      lastCheckBexioAt: new Date().toISOString(),
       lastSyncLog: logLines.join("\n"),
-      lastSyncSummary: "bexio Test OK"
+      lastSyncSummary: "bexio Test OK",
+      probeBexioOk: true,
+      probeBexioAt: new Date().toISOString(),
+      probeBexioSummary: "bexio Test OK",
+      probeBexioLog: logLines.join("\n"),
+      probeEwsOk: Boolean(prev.probeEwsOk),
+      probeEwsAt: trim(prev.probeEwsAt || ""),
+      probeEwsSummary: trim(prev.probeEwsSummary || ""),
+      probeEwsLog: String(prev.probeEwsLog || ""),
+      lastSyncAt: trim(prev.lastSyncAt || "")
     };
     await fsp.mkdir(resolveConfigDir(releaseDir), { recursive: true });
     await fsp.writeFile(
@@ -247,9 +273,17 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       exchangeVersion,
       fieldMapping,
       updatedAt: new Date().toISOString(),
-      lastCheckEwsAt: new Date().toISOString(),
       lastSyncLog: logLines.join("\n"),
-      lastSyncSummary: "EWS Test OK"
+      lastSyncSummary: "EWS Test OK",
+      probeEwsOk: true,
+      probeEwsAt: new Date().toISOString(),
+      probeEwsSummary: "EWS Test OK",
+      probeEwsLog: logLines.join("\n"),
+      probeBexioOk: Boolean(prev.probeBexioOk),
+      probeBexioAt: trim(prev.probeBexioAt || ""),
+      probeBexioSummary: trim(prev.probeBexioSummary || ""),
+      probeBexioLog: String(prev.probeBexioLog || ""),
+      lastSyncAt: trim(prev.lastSyncAt || "")
     };
     await fsp.mkdir(resolveConfigDir(releaseDir), { recursive: true });
     await fsp.writeFile(
@@ -296,7 +330,15 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       updatedAt: new Date().toISOString(),
       lastSyncAt: new Date().toISOString(),
       lastSyncSummary: summary,
-      lastSyncLog: logs.slice(-80).join("\n")
+      lastSyncLog: logs.slice(-80).join("\n"),
+      probeBexioOk: Boolean(prev.probeBexioOk),
+      probeBexioAt: trim(prev.probeBexioAt || ""),
+      probeBexioSummary: trim(prev.probeBexioSummary || ""),
+      probeBexioLog: String(prev.probeBexioLog || ""),
+      probeEwsOk: Boolean(prev.probeEwsOk),
+      probeEwsAt: trim(prev.probeEwsAt || ""),
+      probeEwsSummary: trim(prev.probeEwsSummary || ""),
+      probeEwsLog: String(prev.probeEwsLog || "")
     };
     await fsp.mkdir(resolveConfigDir(releaseDir), { recursive: true });
     await fsp.writeFile(
@@ -329,7 +371,18 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      probeBexioOk: Boolean(prev.probeBexioOk),
+      probeBexioAt: trim(prev.probeBexioAt || ""),
+      probeBexioSummary: trim(prev.probeBexioSummary || ""),
+      probeBexioLog: String(prev.probeBexioLog || ""),
+      probeEwsOk: Boolean(prev.probeEwsOk),
+      probeEwsAt: trim(prev.probeEwsAt || ""),
+      probeEwsSummary: trim(prev.probeEwsSummary || ""),
+      probeEwsLog: String(prev.probeEwsLog || ""),
+      lastSyncAt: trim(prev.lastSyncAt || ""),
+      lastSyncSummary: trim(prev.lastSyncSummary || ""),
+      lastSyncLog: String(prev.lastSyncLog || "")
     };
     await fsp.mkdir(resolveConfigDir(releaseDir), { recursive: true });
     await fsp.writeFile(

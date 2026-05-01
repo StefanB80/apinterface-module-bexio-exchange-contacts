@@ -8,7 +8,10 @@
   const ewsUserVal = s.ewsUser || '';
   const exVer = s.exchangeVersion || 'Exchange2016';
   const mapping = s.fieldMapping || {};
+  const defMap = s.defaultFieldMapping || {};
   const visual = (manifest && manifest.visual) ? manifest.visual : null;
+  const probeBexioOk = Boolean(s.probeBexioOk);
+  const probeEwsOk = Boolean(s.probeEwsOk);
   const bexioFields = [
     { key: 'full_name', label: 'Vollname (name_1 + name_2)' },
     { key: 'name_1', label: 'name_1' },
@@ -40,12 +43,49 @@
     if (Number.isNaN(d.getTime())) return String(value);
     return d.toLocaleString('de-CH');
   }
+  function probeSvgTitle(isBexio) {
+    if (isBexio) {
+      if (probeBexioOk) {
+        return 'bexio: Verbindung zuletzt erfolgreich. ' + (s.probeBexioSummary || '') + ' (' + formatIso(s.probeBexioAt) + '). Klick oeffnet das Protokoll unten.';
+      }
+      return 'bexio: Noch kein erfolgreicher Test. Felder pruefen und «bexio testen» waehlen. Protokoll weiter unten.';
+    }
+    if (probeEwsOk) {
+      return 'Exchange: Verbindung zuletzt erfolgreich. ' + (s.probeEwsSummary || '') + ' (' + formatIso(s.probeEwsAt) + '). Klick oeffnet das Protokoll unten.';
+    }
+    return 'Exchange: Noch kein erfolgreicher Test. Felder pruefen und «EWS testen» waehlen. Protokoll weiter unten.';
+  }
+  const mappingComplete = exchangeTargets.every(function (t) { return String(mapping[t.key] || '').trim().length > 0; });
 %>
+<style>
+  .bec-flow-svg { width: 100%; min-height: 420px; max-height: 560px; }
+  .bec-flow-svg a { cursor: pointer; }
+  .bec-flow-status { font-size: 22px; font-weight: 700; }
+  .bec-flow-status--ok { fill: #1f6b33; }
+  .bec-flow-status--warn { fill: #b45309; }
+  .bec-panel { border: 1px solid #d7dfeb; border-radius: 10px; padding: 0 12px; margin-bottom: 12px; background: #fafbfd; }
+  .bec-panel > summary { cursor: pointer; list-style: none; font-weight: 700; padding: 12px 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .bec-panel > summary::-webkit-details-marker { display: none; }
+  .bec-panel > summary::after { content: '▾'; font-size: 12px; color: #5e6b7c; }
+  .bec-panel[open] > summary::after { content: '▴'; }
+  .bec-okpill { display: inline-flex; align-items: center; gap: 4px; color: #1f6b33; font-size: 13px; font-weight: 700; }
+  .bec-map-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; position: relative; min-height: 340px; margin-top: 8px; }
+  .bec-map-svg-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; overflow: visible; }
+  .bec-map-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; }
+  .bec-map-col h4 { margin: 0 0 4px; font-size: 13px; color: #5e6b7c; text-transform: uppercase; letter-spacing: 0.02em; }
+  .bec-map-item { border: 1px solid #d7dfeb; border-radius: 8px; padding: 8px 10px; background: #fff; cursor: pointer; text-align: left; font: inherit; width: 100%; box-sizing: border-box; transition: box-shadow 0.12s ease, border-color 0.12s ease; }
+  .bec-map-item:hover { border-color: #245dff; box-shadow: 0 2px 8px rgba(36, 93, 255, 0.12); }
+  .bec-map-item.is-picked { outline: 2px solid #245dff; outline-offset: 1px; }
+  .bec-map-item.is-mapped { border-color: #8eb0ff; background: #f5f8ff; }
+  .bec-map-item small { display: block; color: #5e6b7c; font-size: 12px; margin-top: 2px; }
+  .bec-map-hint { font-size: 13px; color: #5e6b7c; margin: 0 0 8px; }
+  .bec-map-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+</style>
 <div class="grid-1">
   <% if (err) { %><div class="alert"><%= err %></div><% } %>
   <% if (ok) { %><div class="alert ok" data-auto-dismiss="1">Aktion erfolgreich ausgefuehrt.</div><% } %>
 
-  <div class="card">
+  <div class="card" id="bec-protocol">
     <p class="muted">
       Richtung: <strong>bexio → Exchange</strong> (Kontakte im Postfachordner «Kontakte»). Konfiguration pro Firma in
       <code>var/company-&lt;id&gt;.json</code>, Laufzuordnung in
@@ -59,64 +99,106 @@
         <summary class="muted">Protokoll</summary>
         <pre style="white-space:pre-wrap;font-size:.85rem;margin-top:.5rem;"><%= s.lastSyncLog %></pre>
       </details>
+    <% } else { %>
+      <p class="muted" style="margin-bottom:0;">Noch kein Protokolltext. Nach «bexio testen», «EWS testen» oder Synchronisation erscheint das Log hier.</p>
     <% } %>
   </div>
 
   <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start;">
     <div class="card">
       <h2>Setup</h2>
-      <form method="post" action="<%= modulePath %>/setup" class="grid-1" autocomplete="on">
+      <form method="post" action="<%= modulePath %>/setup" class="grid-1" autocomplete="on" id="bec-setup-form">
         <input type="hidden" name="setupCompanyId" value="<%= ctxCompanyId %>">
 
-        <h3>bexio</h3>
-        <div>
-          <label for="bexioBaseUrl">API Basis-URL</label>
-          <input id="bexioBaseUrl" name="bexioBaseUrl" type="url" value="<%= bexioUrl %>" placeholder="https://api.bexio.com" required>
-        </div>
-        <div>
-          <label for="bexioToken">Persoenlicher API-Token</label>
-          <input id="bexioToken" name="bexioToken" type="password" value="" autocomplete="off" placeholder="<%= s.bexioTokenMasked ? '(gesetzt, ' + s.bexioTokenMasked + ')' : (s.bexioTokenSet ? '(gesetzt)' : 'Token einfuegen') %>">
-        </div>
-        <div class="row-actions" style="gap:.5rem;">
-          <button type="submit" name="action" value="test_bexio" class="button secondary small">bexio testen</button>
-        </div>
-
-        <h3>Exchange (EWS)</h3>
-        <div>
-          <label for="ewsUrl">EWS Endpoint</label>
-          <input id="ewsUrl" name="ewsUrl" type="url" value="<%= ewsUrlVal %>" placeholder="https://mail.example.com/EWS/Exchange.asmx" required>
-        </div>
-        <div>
-          <label for="ewsUser">Benutzer (z. B. DOMAIN\\user oder UPN)</label>
-          <input id="ewsUser" name="ewsUser" type="text" value="<%= ewsUserVal %>" autocomplete="username" required>
-        </div>
-        <div>
-          <label for="ewsPassword">Passwort</label>
-          <input id="ewsPassword" name="ewsPassword" type="password" value="" autocomplete="current-password" placeholder="<%= s.ewsPasswordSet ? '(unveraendert lassen)' : 'Passwort' %>">
-        </div>
-        <div>
-          <label for="exchangeVersion">Exchange-Version (EWS)</label>
-          <select id="exchangeVersion" name="exchangeVersion">
-            <% ['Exchange2016','Exchange2013_SP1','Exchange2013','Exchange2015','Exchange2010_SP2'].forEach(function(v) { %>
-              <option value="<%= v %>" <%= exVer === v ? 'selected' : '' %>><%= v %></option>
-            <% }); %>
-          </select>
-        </div>
-        <div class="row-actions" style="gap:.5rem;">
-          <button type="submit" name="action" value="test_ews" class="button secondary small">EWS testen</button>
-        </div>
-
-        <h3>Feldzuordnung bexio → Exchange</h3>
         <% exchangeTargets.forEach(function(target) { %>
-          <div>
-            <label for="map_<%= target.key %>"><%= target.label %></label>
-            <select id="map_<%= target.key %>" name="map_<%= target.key %>">
-              <% bexioFields.forEach(function(f) { %>
-                <option value="<%= f.key %>" <%= (mapping[target.key] || '') === f.key ? 'selected' : '' %>><%= f.label %></option>
+          <input type="hidden" name="map_<%= target.key %>" id="bec_map_<%= target.key %>" value="<%= mapping[target.key] || '' %>">
+        <% }); %>
+
+        <details class="bec-panel" <%= probeBexioOk ? '' : 'open' %>>
+          <summary>
+            <span>bexio</span>
+            <% if (probeBexioOk) { %>
+              <span class="bec-okpill" title="Letzter Test: <%= formatIso(s.probeBexioAt) %>">OK ✓</span>
+            <% } else { %>
+              <span class="muted" style="font-weight:600;">Prüfen</span>
+            <% } %>
+          </summary>
+          <div style="padding: 0 4px 12px;">
+            <label for="bexioBaseUrl">API Basis-URL</label>
+            <input id="bexioBaseUrl" name="bexioBaseUrl" type="url" value="<%= bexioUrl %>" placeholder="https://api.bexio.com" required>
+            <label for="bexioToken">Persoenlicher API-Token</label>
+            <input id="bexioToken" name="bexioToken" type="password" value="" autocomplete="off" placeholder="<%= s.bexioTokenMasked ? '(gesetzt, ' + s.bexioTokenMasked + ')' : (s.bexioTokenSet ? '(gesetzt)' : 'Token einfuegen') %>">
+            <div class="row-actions" style="gap:.5rem;">
+              <button type="submit" name="action" value="test_bexio" class="button secondary small">bexio testen</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="bec-panel" <%= probeEwsOk ? '' : 'open' %>>
+          <summary>
+            <span>Exchange (EWS)</span>
+            <% if (probeEwsOk) { %>
+              <span class="bec-okpill" title="Letzter Test: <%= formatIso(s.probeEwsAt) %>">OK ✓</span>
+            <% } else { %>
+              <span class="muted" style="font-weight:600;">Prüfen</span>
+            <% } %>
+          </summary>
+          <div style="padding: 0 4px 12px;">
+            <label for="ewsUrl">EWS Endpoint</label>
+            <input id="ewsUrl" name="ewsUrl" type="url" value="<%= ewsUrlVal %>" placeholder="https://mail.example.com/EWS/Exchange.asmx" required>
+            <label for="ewsUser">Benutzer (z. B. DOMAIN\\user oder UPN)</label>
+            <input id="ewsUser" name="ewsUser" type="text" value="<%= ewsUserVal %>" autocomplete="username" required>
+            <label for="ewsPassword">Passwort</label>
+            <input id="ewsPassword" name="ewsPassword" type="password" value="" autocomplete="current-password" placeholder="<%= s.ewsPasswordSet ? '(unveraendert lassen)' : 'Passwort' %>">
+            <label for="exchangeVersion">Exchange-Version (EWS)</label>
+            <select id="exchangeVersion" name="exchangeVersion">
+              <% ['Exchange2016','Exchange2013_SP1','Exchange2013','Exchange2015','Exchange2010_SP2'].forEach(function(v) { %>
+                <option value="<%= v %>" <%= exVer === v ? 'selected' : '' %>><%= v %></option>
               <% }); %>
             </select>
+            <div class="row-actions" style="gap:.5rem;">
+              <button type="submit" name="action" value="test_ews" class="button secondary small">EWS testen</button>
+            </div>
           </div>
-        <% }); %>
+        </details>
+
+        <details class="bec-panel" <%= (probeBexioOk && probeEwsOk && mappingComplete) ? '' : 'open' %>>
+          <summary>
+            <span>Feldzuordnung bexio → Exchange</span>
+            <% if (mappingComplete) { %>
+              <span class="bec-okpill">OK ✓</span>
+            <% } else { %>
+              <span class="muted" style="font-weight:600;">Zuordnen</span>
+            <% } %>
+          </summary>
+          <div style="padding: 0 4px 12px;">
+            <p class="bec-map-hint">Zuordnung wie «Linien ziehen»: zuerst ein <strong>Exchange-Feld</strong> (rechts) antippen, dann das passende <strong>bexio-Feld</strong> (links). Es entsteht eine Linie. Mehrfachzuordnungen sind möglich.</p>
+            <div class="bec-map-wrap" id="bec-map-wrap">
+              <svg class="bec-map-svg-layer" id="bec-map-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+              <div class="bec-map-col">
+                <h4>bexio (Quelle)</h4>
+                <% bexioFields.forEach(function(f) { %>
+                  <button type="button" class="bec-map-item bec-map-src" data-bec-src="<%= f.key %>">
+                    <%= f.label %>
+                    <small><code><%= f.key %></code></small>
+                  </button>
+                <% }); %>
+              </div>
+              <div class="bec-map-col">
+                <h4>Exchange (Ziel)</h4>
+                <% exchangeTargets.forEach(function(t) { %>
+                  <button type="button" class="bec-map-item bec-map-tgt" data-bec-tgt="<%= t.key %>">
+                    <%= t.label %>
+                    <small id="bec_tgt_hint_<%= t.key %>">← <%= (mapping[t.key] || '—') %></small>
+                  </button>
+                <% }); %>
+              </div>
+            </div>
+            <div class="bec-map-actions">
+              <button type="button" class="button secondary small" id="bec-map-reset">Standard-Zuordnung</button>
+            </div>
+          </div>
+        </details>
 
         <div class="row-actions" style="margin-top:1rem;gap:.5rem;">
           <button type="submit" name="action" value="save" class="button">Speichern</button>
@@ -131,33 +213,167 @@
     <div class="card">
       <h2>Datenstroeme</h2>
       <% if (visual && visual.circle && Array.isArray(visual.apps)) { %>
-        <svg viewBox="0 0 640 440" aria-label="Modul-Datenfluss" style="width:100%;height:auto;">
+        <svg class="bec-flow-svg" viewBox="0 0 900 520" aria-label="Modul-Datenfluss">
           <defs>
-            <marker id="bec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <marker id="bec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f4fb3"></path>
             </marker>
           </defs>
-          <circle cx="<%= visual.circle.center.x %>" cy="<%= visual.circle.center.y %>" r="<%= visual.circle.radius %>" fill="none" stroke="#6379d8" stroke-width="2" stroke-dasharray="8 8"></circle>
+          <circle cx="<%= visual.circle.center.x %>" cy="<%= visual.circle.center.y %>" r="<%= visual.circle.radius %>" fill="none" stroke="#6379d8" stroke-width="2" stroke-dasharray="10 10"></circle>
           <% visual.apps.forEach(function(app) { %>
+            <% const isBexio = app.id === 'bexio'; const stOk = isBexio ? probeBexioOk : probeEwsOk; %>
             <g>
-              <circle cx="<%= app.position.x %>" cy="<%= app.position.y %>" r="24" fill="#e9efff" stroke="#2f4fb3" stroke-width="2"></circle>
-              <text x="<%= app.position.x %>" y="<%= app.position.y + 42 %>" text-anchor="middle" fill="#1a2340" font-size="12" font-weight="bold"><%= app.label %></text>
+              <a href="#bec-protocol" tabindex="0">
+                <title><%= probeSvgTitle(isBexio) %></title>
+                <circle cx="<%= app.position.x %>" cy="<%= app.position.y %>" r="40" fill="#e9efff" stroke="#2f4fb3" stroke-width="2.5"></circle>
+                <text class="bec-flow-status <%= stOk ? 'bec-flow-status--ok' : 'bec-flow-status--warn' %>" x="<%= app.position.x + 52 %>" y="<%= app.position.y + 8 %>" text-anchor="start"><%= stOk ? '✓' : '!' %></text>
+              </a>
+              <text x="<%= app.position.x %>" y="<%= app.position.y + 68 %>" text-anchor="middle" fill="#1a2340" font-size="15" font-weight="700"><%= app.label %></text>
             </g>
           <% }); %>
           <% (visual.dataStreams || []).forEach(function(stream) { %>
             <% const src = visual.apps.find(function(a) { return a.id === stream.source; }); const tgt = visual.apps.find(function(a) { return a.id === stream.target; }); %>
             <% if (src && tgt) { %>
               <g>
-                <line x1="<%= src.position.x %>" y1="<%= src.position.y %>" x2="<%= tgt.position.x %>" y2="<%= tgt.position.y %>" stroke="#2f4fb3" stroke-width="1.5" marker-end="url(#bec-arrow)"></line>
-                <text x="<%= stream.midpoint.x %>" y="<%= stream.midpoint.y %>" text-anchor="middle" fill="#27418f" font-size="12"><%= stream.label %></text>
+                <line x1="<%= src.position.x %>" y1="<%= src.position.y %>" x2="<%= tgt.position.x %>" y2="<%= tgt.position.y %>" stroke="#2f4fb3" stroke-width="2.5" marker-end="url(#bec-arrow)"></line>
+                <text x="<%= stream.midpoint.x %>" y="<%= stream.midpoint.y %>" text-anchor="middle" fill="#27418f" font-size="13" font-weight="600"><%= stream.label %></text>
               </g>
             <% } %>
           <% }); %>
-          <text x="<%= visual.circle.center.x %>" y="<%= visual.circle.center.y %>" text-anchor="middle" fill="#1a2340" font-size="14" font-weight="bold">Kontaktsync</text>
+          <text x="<%= visual.circle.center.x %>" y="<%= visual.circle.center.y %>" text-anchor="middle" fill="#1a2340" font-size="17" font-weight="700">Kontaktsync</text>
         </svg>
+        <p class="muted" style="font-size:13px;margin-top:8px;">Hinweis: Auf die Kreise tippen springt zum <a href="#bec-protocol">Protokoll</a>. Tooltip erscheint beim Hover über den Kreis (Status der letzten Tests).</p>
       <% } else { %>
         <p class="muted">Keine Visualisierung im Manifest.</p>
       <% } %>
     </div>
   </div>
 </div>
+<script type="application/json" id="bec-default-map"><%- JSON.stringify(defMap) %></script>
+<script>
+(function () {
+  var wrap = document.getElementById('bec-map-wrap');
+  var svg = document.getElementById('bec-map-svg');
+  if (!wrap || !svg) return;
+
+  var pickedTgt = null;
+
+  function ns() {
+    return 'http://www.w3.org/2000/svg';
+  }
+
+  function setHidden(tgtKey, srcKey) {
+    var el = document.getElementById('bec_map_' + tgtKey);
+    if (el) el.value = srcKey || '';
+    var hint = document.getElementById('bec_tgt_hint_' + tgtKey);
+    if (hint) hint.textContent = '\u2190 ' + (srcKey || '\u2014');
+  }
+
+  function readHidden(tgtKey) {
+    var el = document.getElementById('bec_map_' + tgtKey);
+    return el ? String(el.value || '').trim() : '';
+  }
+
+  function redrawLines() {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var w = wrap.clientWidth;
+    var h = wrap.clientHeight;
+    if (w < 2 || h < 2) return;
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+
+    var tgts = wrap.querySelectorAll('.bec-map-tgt');
+    tgts.forEach(function (btn) {
+      var tgtKey = btn.getAttribute('data-bec-tgt');
+      var srcKey = readHidden(tgtKey);
+      if (!srcKey) return;
+      var srcEl = wrap.querySelector('.bec-map-src[data-bec-src="' + srcKey + '"]');
+      if (!srcEl || !btn) return;
+      var wr = wrap.getBoundingClientRect();
+      var a = srcEl.getBoundingClientRect();
+      var b = btn.getBoundingClientRect();
+      var x1 = a.right - wr.left;
+      var y1 = a.top + a.height / 2 - wr.top;
+      var x2 = b.left - wr.left;
+      var y2 = b.top + b.height / 2 - wr.top;
+      var mid = (x1 + x2) / 2;
+      var d = 'M ' + x1 + ' ' + y1 + ' C ' + mid + ' ' + y1 + ', ' + mid + ' ' + y2 + ', ' + x2 + ' ' + y2;
+      var path = document.createElementNS(ns(), 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('stroke', '#2f4fb3');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('opacity', '0.85');
+      svg.appendChild(path);
+    });
+  }
+
+  function updateMappedClasses() {
+    wrap.querySelectorAll('.bec-map-src').forEach(function (el) { el.classList.remove('is-mapped'); });
+    wrap.querySelectorAll('.bec-map-tgt').forEach(function (el) {
+      el.classList.remove('is-mapped');
+      var tgtKey = el.getAttribute('data-bec-tgt');
+      if (readHidden(tgtKey)) el.classList.add('is-mapped');
+    });
+    wrap.querySelectorAll('.bec-map-tgt').forEach(function (el) {
+      var tgtKey = el.getAttribute('data-bec-tgt');
+      var sk = readHidden(tgtKey);
+      if (!sk) return;
+      var srcEl = wrap.querySelector('.bec-map-src[data-bec-src="' + sk + '"]');
+      if (srcEl) srcEl.classList.add('is-mapped');
+    });
+  }
+
+  function refresh() {
+    updateMappedClasses();
+    redrawLines();
+  }
+
+  wrap.querySelectorAll('.bec-map-tgt').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var k = btn.getAttribute('data-bec-tgt');
+      if (pickedTgt === k) {
+        pickedTgt = null;
+        wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+        return;
+      }
+      pickedTgt = k;
+      wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+      btn.classList.add('is-picked');
+    });
+  });
+
+  wrap.querySelectorAll('.bec-map-src').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!pickedTgt) return;
+      var sk = btn.getAttribute('data-bec-src');
+      setHidden(pickedTgt, sk);
+      pickedTgt = null;
+      wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+      refresh();
+    });
+  });
+
+  var resetBtn = document.getElementById('bec-map-reset');
+  var defNode = document.getElementById('bec-default-map');
+  if (resetBtn && defNode) {
+    try {
+      var def = JSON.parse(defNode.textContent || '{}');
+      resetBtn.addEventListener('click', function () {
+        Object.keys(def).forEach(function (k) {
+          setHidden(k, def[k] || '');
+        });
+        pickedTgt = null;
+        wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+        refresh();
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  window.addEventListener('resize', function () { redrawLines(); });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { refresh(); });
+  }
+  refresh();
+  setTimeout(refresh, 120);
+})();
+</script>
