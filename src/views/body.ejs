@@ -1,92 +1,163 @@
 <%
-const s = setup || {};
-const ctxCompanyId = (typeof formCompanyId !== 'undefined' && formCompanyId !== null && !Number.isNaN(Number(formCompanyId))) ? Number(formCompanyId) : Number(companyId);
-const err = (typeof query !== 'undefined' && query.error) ? String(query.error) : '';
-const ok = (typeof query !== 'undefined' && query.success);
-const bexioUrl = s.bexioBaseUrl || 'https://api.bexio.com';
-const ewsUrlVal = s.ewsUrl || '';
-const ewsUserVal = s.ewsUser || '';
-const exVer = s.exchangeVersion || 'Exchange2016';
-function formatIso(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString('de-CH');
-}
+  const s = setup || {};
+  const ctxCompanyId = (typeof formCompanyId !== 'undefined' && formCompanyId !== null && !Number.isNaN(Number(formCompanyId))) ? Number(formCompanyId) : Number(companyId);
+  const err = (typeof query !== 'undefined' && query.error) ? String(query.error) : '';
+  const ok = (typeof query !== 'undefined' && query.success);
+  const bexioUrl = s.bexioBaseUrl || 'https://api.bexio.com';
+  const ewsUrlVal = s.ewsUrl || '';
+  const ewsUserVal = s.ewsUser || '';
+  const exVer = s.exchangeVersion || 'Exchange2016';
+  const mapping = s.fieldMapping || {};
+  const visual = (manifest && manifest.visual) ? manifest.visual : null;
+  const bexioFields = [
+    { key: 'full_name', label: 'Vollname (name_1 + name_2)' },
+    { key: 'name_1', label: 'name_1' },
+    { key: 'name_2', label: 'name_2' },
+    { key: 'mail', label: 'mail' },
+    { key: 'mail_second', label: 'mail_second' },
+    { key: 'phone_fixed', label: 'phone_fixed' },
+    { key: 'phone_mobile', label: 'phone_mobile' },
+    { key: 'phone_home', label: 'phone_home' },
+    { key: 'address', label: 'address' },
+    { key: 'city', label: 'city' },
+    { key: 'postcode', label: 'postcode' }
+  ];
+  const exchangeTargets = [
+    { key: 'displayName', label: 'Exchange DisplayName' },
+    { key: 'givenName', label: 'Exchange GivenName' },
+    { key: 'surname', label: 'Exchange Surname' },
+    { key: 'companyName', label: 'Exchange CompanyName' },
+    { key: 'emailAddress1', label: 'Exchange EmailAddress1' },
+    { key: 'businessPhone', label: 'Exchange BusinessPhone' },
+    { key: 'mobilePhone', label: 'Exchange MobilePhone' },
+    { key: 'street', label: 'Exchange Street' },
+    { key: 'city', label: 'Exchange City' },
+    { key: 'postalCode', label: 'Exchange PostalCode' }
+  ];
+  function formatIso(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString('de-CH');
+  }
 %>
 <div class="grid-1">
   <% if (err) { %><div class="alert"><%= err %></div><% } %>
-  <% if (ok) { %>
-  <div class="alert ok" data-auto-dismiss="1">Aktion erfolgreich ausgefuehrt.</div>
-  <% } %>
+  <% if (ok) { %><div class="alert ok" data-auto-dismiss="1">Aktion erfolgreich ausgefuehrt.</div><% } %>
 
   <div class="card">
-    <h2>bexio ↔ Exchange (EWS)</h2>
     <p class="muted">
-      Richtung: <strong>bexio → Exchange</strong> (Kontakte im Postfachordner «Kontakte»). Exchange On-Premises via
-      <strong>EWS</strong> (<code>…/EWS/Exchange.asmx</code>). Zugangsdaten gelten pro Firma unter
-      <code>var/company-&lt;id&gt;.json</code>; Zuordnung bexio-ID → Exchange-Item unter
+      Richtung: <strong>bexio → Exchange</strong> (Kontakte im Postfachordner «Kontakte»). Konfiguration pro Firma in
+      <code>var/company-&lt;id&gt;.json</code>, Laufzuordnung in
       <code>var/company-&lt;id&gt;-bexio-exchange-contact-map.json</code>.
-      <strong>NTLM</strong> und erweiterte Auth: ggf. <code>@ewsjs/xhr</code> nachruesten (aktuell <code>WebCredentials</code>).
     </p>
     <% if (s.lastSyncSummary) { %>
-    <p class="muted">Letzter Lauf: <strong><%= s.lastSyncSummary %></strong> <% if (s.lastSyncAt) { %>(<%= formatIso(s.lastSyncAt) %>)<% } %></p>
+      <p class="muted">Letzter Lauf: <strong><%= s.lastSyncSummary %></strong> <% if (s.lastSyncAt) { %>(<%= formatIso(s.lastSyncAt) %>)<% } %></p>
     <% } %>
     <% if (s.lastSyncLog) { %>
-    <details style="margin-bottom:1rem;">
-      <summary class="muted">Protokoll</summary>
-      <pre style="white-space:pre-wrap;font-size:.85rem;margin-top:.5rem;"><%= s.lastSyncLog %></pre>
-    </details>
+      <details style="margin-bottom:1rem;">
+        <summary class="muted">Protokoll</summary>
+        <pre style="white-space:pre-wrap;font-size:.85rem;margin-top:.5rem;"><%= s.lastSyncLog %></pre>
+      </details>
     <% } %>
+  </div>
 
-    <form method="post" action="<%= modulePath %>/setup" class="grid-1" autocomplete="on">
-      <input type="hidden" name="setupCompanyId" value="<%= ctxCompanyId %>">
+  <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start;">
+    <div class="card">
+      <h2>Setup</h2>
+      <form method="post" action="<%= modulePath %>/setup" class="grid-1" autocomplete="on">
+        <input type="hidden" name="setupCompanyId" value="<%= ctxCompanyId %>">
 
-      <h3>bexio</h3>
-      <div>
-        <label for="bexioBaseUrl">API Basis-URL</label>
-        <input id="bexioBaseUrl" name="bexioBaseUrl" type="url" value="<%= bexioUrl %>" placeholder="https://api.bexio.com" required>
-      </div>
-      <div>
-        <label for="bexioToken">Persoenlicher API-Token</label>
-        <input id="bexioToken" name="bexioToken" type="password" value="" autocomplete="off" placeholder="<%= s.bexioTokenMasked ? '(gesetzt, ' + s.bexioTokenMasked + ')' : (s.bexioTokenSet ? '(gesetzt)' : 'Token einfuegen') %>">
-      </div>
-      <div class="row-actions" style="gap:.5rem;">
-        <button type="submit" name="action" value="test_bexio" class="button secondary small">bexio testen</button>
-      </div>
+        <h3>bexio</h3>
+        <div>
+          <label for="bexioBaseUrl">API Basis-URL</label>
+          <input id="bexioBaseUrl" name="bexioBaseUrl" type="url" value="<%= bexioUrl %>" placeholder="https://api.bexio.com" required>
+        </div>
+        <div>
+          <label for="bexioToken">Persoenlicher API-Token</label>
+          <input id="bexioToken" name="bexioToken" type="password" value="" autocomplete="off" placeholder="<%= s.bexioTokenMasked ? '(gesetzt, ' + s.bexioTokenMasked + ')' : (s.bexioTokenSet ? '(gesetzt)' : 'Token einfuegen') %>">
+        </div>
+        <div class="row-actions" style="gap:.5rem;">
+          <button type="submit" name="action" value="test_bexio" class="button secondary small">bexio testen</button>
+        </div>
 
-      <h3>Exchange (EWS)</h3>
-      <div>
-        <label for="ewsUrl">EWS Endpoint</label>
-        <input id="ewsUrl" name="ewsUrl" type="url" value="<%= ewsUrlVal %>" placeholder="https://mail.example.com/EWS/Exchange.asmx" required>
-      </div>
-      <div>
-        <label for="ewsUser">Benutzer (z. B. DOMAIN\\user oder UPN)</label>
-        <input id="ewsUser" name="ewsUser" type="text" value="<%= ewsUserVal %>" autocomplete="username" required>
-      </div>
-      <div>
-        <label for="ewsPassword">Passwort</label>
-        <input id="ewsPassword" name="ewsPassword" type="password" value="" autocomplete="current-password" placeholder="<%= s.ewsPasswordSet ? '(unveraendert lassen)' : 'Passwort' %>">
-      </div>
-      <div>
-        <label for="exchangeVersion">Exchange-Version (EWS)</label>
-        <select id="exchangeVersion" name="exchangeVersion">
-          <% ['Exchange2016','Exchange2013_SP1','Exchange2013','Exchange2015','Exchange2010_SP2'].forEach(function(v) { %>
-          <option value="<%= v %>" <%= exVer === v ? 'selected' : '' %>><%= v %></option>
+        <h3>Exchange (EWS)</h3>
+        <div>
+          <label for="ewsUrl">EWS Endpoint</label>
+          <input id="ewsUrl" name="ewsUrl" type="url" value="<%= ewsUrlVal %>" placeholder="https://mail.example.com/EWS/Exchange.asmx" required>
+        </div>
+        <div>
+          <label for="ewsUser">Benutzer (z. B. DOMAIN\\user oder UPN)</label>
+          <input id="ewsUser" name="ewsUser" type="text" value="<%= ewsUserVal %>" autocomplete="username" required>
+        </div>
+        <div>
+          <label for="ewsPassword">Passwort</label>
+          <input id="ewsPassword" name="ewsPassword" type="password" value="" autocomplete="current-password" placeholder="<%= s.ewsPasswordSet ? '(unveraendert lassen)' : 'Passwort' %>">
+        </div>
+        <div>
+          <label for="exchangeVersion">Exchange-Version (EWS)</label>
+          <select id="exchangeVersion" name="exchangeVersion">
+            <% ['Exchange2016','Exchange2013_SP1','Exchange2013','Exchange2015','Exchange2010_SP2'].forEach(function(v) { %>
+              <option value="<%= v %>" <%= exVer === v ? 'selected' : '' %>><%= v %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="row-actions" style="gap:.5rem;">
+          <button type="submit" name="action" value="test_ews" class="button secondary small">EWS testen</button>
+        </div>
+
+        <h3>Feldzuordnung bexio → Exchange</h3>
+        <% exchangeTargets.forEach(function(target) { %>
+          <div>
+            <label for="map_<%= target.key %>"><%= target.label %></label>
+            <select id="map_<%= target.key %>" name="map_<%= target.key %>">
+              <% bexioFields.forEach(function(f) { %>
+                <option value="<%= f.key %>" <%= (mapping[target.key] || '') === f.key ? 'selected' : '' %>><%= f.label %></option>
+              <% }); %>
+            </select>
+          </div>
+        <% }); %>
+
+        <div class="row-actions" style="margin-top:1rem;gap:.5rem;">
+          <button type="submit" name="action" value="save" class="button">Speichern</button>
+          <button type="submit" name="action" value="sync" class="button">Jetzt synchronisieren</button>
+        </div>
+      </form>
+      <% if (manifest && manifest.version) { %>
+        <p class="muted" style="margin-top:1rem;">Modulversion <%= manifest.version %><% if (s.moduleVersion) { %> · Paket <%= s.moduleVersion %><% } %></p>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <h2>Datenstroeme</h2>
+      <% if (visual && visual.circle && Array.isArray(visual.apps)) { %>
+        <svg viewBox="0 0 640 440" aria-label="Modul-Datenfluss" style="width:100%;height:auto;">
+          <defs>
+            <marker id="bec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f4fb3"></path>
+            </marker>
+          </defs>
+          <circle cx="<%= visual.circle.center.x %>" cy="<%= visual.circle.center.y %>" r="<%= visual.circle.radius %>" fill="none" stroke="#6379d8" stroke-width="2" stroke-dasharray="8 8"></circle>
+          <% visual.apps.forEach(function(app) { %>
+            <g>
+              <circle cx="<%= app.position.x %>" cy="<%= app.position.y %>" r="24" fill="#e9efff" stroke="#2f4fb3" stroke-width="2"></circle>
+              <text x="<%= app.position.x %>" y="<%= app.position.y + 42 %>" text-anchor="middle" fill="#1a2340" font-size="12" font-weight="bold"><%= app.label %></text>
+            </g>
           <% }); %>
-        </select>
-      </div>
-      <div class="row-actions" style="gap:.5rem;">
-        <button type="submit" name="action" value="test_ews" class="button secondary small">EWS testen</button>
-      </div>
-
-      <div class="row-actions" style="margin-top:1rem;gap:.5rem;">
-        <button type="submit" name="action" value="save" class="button">Speichern</button>
-        <button type="submit" name="action" value="sync" class="button">Jetzt synchronisieren</button>
-      </div>
-    </form>
-    <% if (manifest && manifest.version) { %>
-    <p class="muted" style="margin-top:1rem;">Modulversion <%= manifest.version %><% if (s.moduleVersion) { %> · Paket <%= s.moduleVersion %><% } %></p>
-    <% } %>
+          <% (visual.dataStreams || []).forEach(function(stream) { %>
+            <% const src = visual.apps.find(function(a) { return a.id === stream.source; }); const tgt = visual.apps.find(function(a) { return a.id === stream.target; }); %>
+            <% if (src && tgt) { %>
+              <g>
+                <line x1="<%= src.position.x %>" y1="<%= src.position.y %>" x2="<%= tgt.position.x %>" y2="<%= tgt.position.y %>" stroke="#2f4fb3" stroke-width="1.5" marker-end="url(#bec-arrow)"></line>
+                <text x="<%= stream.midpoint.x %>" y="<%= stream.midpoint.y %>" text-anchor="middle" fill="#27418f" font-size="12"><%= stream.label %></text>
+              </g>
+            <% } %>
+          <% }); %>
+          <text x="<%= visual.circle.center.x %>" y="<%= visual.circle.center.y %>" text-anchor="middle" fill="#1a2340" font-size="14" font-weight="bold">Kontaktsync</text>
+        </svg>
+      <% } else { %>
+        <p class="muted">Keine Visualisierung im Manifest.</p>
+      <% } %>
+    </div>
   </div>
 </div>

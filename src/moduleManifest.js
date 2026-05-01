@@ -5,6 +5,7 @@ const moduleManifest = {
   slug: "apinterface-module-bexio-exchange-contacts",
   version: packageJson.version,
   displayName: "bexio ↔ Exchange Kontakte",
+  appKey: "exchange",
   appKeys: ["bexio", "exchange"],
   path: "/modules/bexio-exchange-contacts",
   category: "integration",

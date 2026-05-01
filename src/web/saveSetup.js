@@ -3,7 +3,7 @@ const path = require("path");
 const fsp = require("fs/promises");
 const { probeApi } = require("../lib/bexioContacts");
 const { createExchangeService, probeContactsFolder } = require("../lib/exchangeServiceFactory");
-const { syncBexioContactsToExchange } = require("../lib/syncBexioToExchange");
+const { syncBexioContactsToExchange, DEFAULT_FIELD_MAPPING } = require("../lib/syncBexioToExchange");
 
 function trim(value) {
   return String(value || "").trim();
@@ -85,6 +85,22 @@ function maskSecret(value, visible = 4) {
   return `${s.slice(0, visible)}…`;
 }
 
+function normalizeFieldMapping(input) {
+  const src = input && typeof input === "object" ? input : {};
+  return {
+    displayName: trim(src.displayName || DEFAULT_FIELD_MAPPING.displayName),
+    givenName: trim(src.givenName || DEFAULT_FIELD_MAPPING.givenName),
+    surname: trim(src.surname || DEFAULT_FIELD_MAPPING.surname),
+    companyName: trim(src.companyName || DEFAULT_FIELD_MAPPING.companyName),
+    emailAddress1: trim(src.emailAddress1 || DEFAULT_FIELD_MAPPING.emailAddress1),
+    businessPhone: trim(src.businessPhone || DEFAULT_FIELD_MAPPING.businessPhone),
+    mobilePhone: trim(src.mobilePhone || DEFAULT_FIELD_MAPPING.mobilePhone),
+    street: trim(src.street || DEFAULT_FIELD_MAPPING.street),
+    city: trim(src.city || DEFAULT_FIELD_MAPPING.city),
+    postalCode: trim(src.postalCode || DEFAULT_FIELD_MAPPING.postalCode)
+  };
+}
+
 async function readRawCompanyConfig(releaseDir, companyId) {
   const id = Number(companyId);
   if (!id) {
@@ -107,6 +123,7 @@ async function loadSetup(releaseDir, companyId) {
     ewsUser: "",
     ewsPassword: "",
     exchangeVersion: "Exchange2016",
+    fieldMapping: { ...DEFAULT_FIELD_MAPPING },
     updatedAt: "",
     lastSyncAt: "",
     lastSyncSummary: "",
@@ -120,7 +137,7 @@ async function loadSetup(releaseDir, companyId) {
   try {
     const raw = await fsp.readFile(filePath, "utf8");
     const parsed = JSON.parse(raw);
-    const merged = { ...empty, ...parsed };
+    const merged = { ...empty, ...parsed, fieldMapping: normalizeFieldMapping(parsed.fieldMapping) };
     merged.moduleVersion = readPackageVersion(releaseDir);
     if (merged.bexioToken) {
       merged.bexioTokenMasked = maskSecret(merged.bexioToken);
@@ -177,6 +194,18 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
   }
 
   const exchangeVersion = trim(body.exchangeVersion || prev.exchangeVersion || "Exchange2016");
+  const fieldMapping = normalizeFieldMapping({
+    displayName: body.map_displayName || (prev.fieldMapping && prev.fieldMapping.displayName),
+    givenName: body.map_givenName || (prev.fieldMapping && prev.fieldMapping.givenName),
+    surname: body.map_surname || (prev.fieldMapping && prev.fieldMapping.surname),
+    companyName: body.map_companyName || (prev.fieldMapping && prev.fieldMapping.companyName),
+    emailAddress1: body.map_emailAddress1 || (prev.fieldMapping && prev.fieldMapping.emailAddress1),
+    businessPhone: body.map_businessPhone || (prev.fieldMapping && prev.fieldMapping.businessPhone),
+    mobilePhone: body.map_mobilePhone || (prev.fieldMapping && prev.fieldMapping.mobilePhone),
+    street: body.map_street || (prev.fieldMapping && prev.fieldMapping.street),
+    city: body.map_city || (prev.fieldMapping && prev.fieldMapping.city),
+    postalCode: body.map_postalCode || (prev.fieldMapping && prev.fieldMapping.postalCode)
+  });
 
   const logLines = [];
 
@@ -190,6 +219,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsUser,
       ewsPassword,
       exchangeVersion,
+      fieldMapping,
       updatedAt: new Date().toISOString(),
       lastCheckBexioAt: new Date().toISOString(),
       lastSyncLog: logLines.join("\n"),
@@ -215,6 +245,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsUser,
       ewsPassword,
       exchangeVersion,
+      fieldMapping,
       updatedAt: new Date().toISOString(),
       lastCheckEwsAt: new Date().toISOString(),
       lastSyncLog: logLines.join("\n"),
@@ -245,10 +276,12 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsUser,
       ewsPassword,
       exchangeVersion,
+      fieldMapping,
       idMap,
       log: (line) => {
         logs.push(`${new Date().toISOString()} ${line}`);
-      }
+      },
+      fieldMapping
     });
     await writeIdMap(releaseDir, targetCompanyId, map);
     const summary = `${stats.created} neu, ${stats.updated} aktualisiert, ${stats.errors} Fehler (${stats.totalBexio} bexio)`;
@@ -259,6 +292,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsUser,
       ewsPassword,
       exchangeVersion,
+      fieldMapping,
       updatedAt: new Date().toISOString(),
       lastSyncAt: new Date().toISOString(),
       lastSyncSummary: summary,
@@ -294,6 +328,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsUser,
       ewsPassword,
       exchangeVersion,
+      fieldMapping,
       updatedAt: new Date().toISOString()
     };
     await fsp.mkdir(resolveConfigDir(releaseDir), { recursive: true });
