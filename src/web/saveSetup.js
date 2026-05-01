@@ -3,7 +3,17 @@ const path = require("path");
 const fsp = require("fs/promises");
 const { probeApi } = require("../lib/bexioContacts");
 const { createExchangeService, probeContactsFolder } = require("../lib/exchangeServiceFactory");
-const { syncBexioContactsToExchange, DEFAULT_FIELD_MAPPING } = require("../lib/syncBexioToExchange");
+const {
+  syncBexioContactsToExchange,
+  DEFAULT_FIELD_MAPPING,
+  normalizeFieldMapping
+} = require("../lib/syncBexioToExchange");
+const {
+  BEXIO_CONTACT_FIELDS,
+  EXCHANGE_CONTACT_FIELDS,
+  allBexioKeys,
+  allExchangeKeys
+} = require("../lib/fieldCatalog");
 
 function trim(value) {
   return String(value || "").trim();
@@ -85,20 +95,61 @@ function maskSecret(value, visible = 4) {
   return `${s.slice(0, visible)}…`;
 }
 
-function normalizeFieldMapping(input) {
-  const src = input && typeof input === "object" ? input : {};
-  return {
-    displayName: trim(src.displayName || DEFAULT_FIELD_MAPPING.displayName),
-    givenName: trim(src.givenName || DEFAULT_FIELD_MAPPING.givenName),
-    surname: trim(src.surname || DEFAULT_FIELD_MAPPING.surname),
-    companyName: trim(src.companyName || DEFAULT_FIELD_MAPPING.companyName),
-    emailAddress1: trim(src.emailAddress1 || DEFAULT_FIELD_MAPPING.emailAddress1),
-    businessPhone: trim(src.businessPhone || DEFAULT_FIELD_MAPPING.businessPhone),
-    mobilePhone: trim(src.mobilePhone || DEFAULT_FIELD_MAPPING.mobilePhone),
-    street: trim(src.street || DEFAULT_FIELD_MAPPING.street),
-    city: trim(src.city || DEFAULT_FIELD_MAPPING.city),
-    postalCode: trim(src.postalCode || DEFAULT_FIELD_MAPPING.postalCode)
-  };
+function readEnabledKeysFromBody(body, fieldName, prevKeys) {
+  const raw = body[fieldName];
+  const fallback = () =>
+    Array.isArray(prevKeys) && prevKeys.length ? [...prevKeys] : allBexioKeys();
+  const fallbackEx = () =>
+    Array.isArray(prevKeys) && prevKeys.length ? [...prevKeys] : allExchangeKeys();
+
+  if (raw === undefined) {
+    return fieldName === "exchangeEnabled" ? fallbackEx() : fallback();
+  }
+  const list = Array.isArray(raw) ? raw.map(trim).filter(Boolean) : [trim(raw)].filter(Boolean);
+  if (!list.length) {
+    return fieldName === "exchangeEnabled" ? fallbackEx() : fallback();
+  }
+  return list;
+}
+
+function exchangeEnabledFromKeys(keys) {
+  const set = new Set(keys);
+  return Object.fromEntries(allExchangeKeys().map((k) => [k, set.has(k)]));
+}
+
+function appendProtocolHistory(prev, entry) {
+  const hist = Array.isArray(prev.protocolHistory) ? [...prev.protocolHistory] : [];
+  hist.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    at: new Date().toISOString(),
+    type: entry.type,
+    summary: trim(entry.summary),
+    log: String(entry.log || "")
+  });
+  while (hist.length > 50) {
+    hist.shift();
+  }
+  return hist;
+}
+
+function buildFieldMappingFromBody(body, prevMap) {
+  const p = prevMap && typeof prevMap === "object" ? prevMap : {};
+  return normalizeFieldMapping({
+    displayName: body.map_displayName || p.displayName,
+    givenName: body.map_givenName || p.givenName,
+    surname: body.map_surname || p.surname,
+    companyName: body.map_companyName || p.companyName,
+    jobTitle: body.map_jobTitle || p.jobTitle,
+    department: body.map_department || p.department,
+    emailAddress1: body.map_emailAddress1 || p.emailAddress1,
+    emailAddress2: body.map_emailAddress2 || p.emailAddress2,
+    businessPhone: body.map_businessPhone || p.businessPhone,
+    mobilePhone: body.map_mobilePhone || p.mobilePhone,
+    homePhone: body.map_homePhone || p.homePhone,
+    street: body.map_street || p.street,
+    city: body.map_city || p.city,
+    postalCode: body.map_postalCode || p.postalCode
+  });
 }
 
 async function readRawCompanyConfig(releaseDir, companyId) {
@@ -125,6 +176,9 @@ async function loadSetup(releaseDir, companyId) {
     exchangeVersion: "Exchange2016",
     fieldMapping: { ...DEFAULT_FIELD_MAPPING },
     defaultFieldMapping: { ...DEFAULT_FIELD_MAPPING },
+    bexioEnabledKeys: allBexioKeys(),
+    exchangeEnabledKeys: allExchangeKeys(),
+    protocolHistory: [],
     updatedAt: "",
     lastSyncAt: "",
     lastSyncSummary: "",
@@ -137,7 +191,9 @@ async function loadSetup(releaseDir, companyId) {
     probeEwsAt: "",
     probeEwsSummary: "",
     probeEwsLog: "",
-    moduleVersion: readPackageVersion(releaseDir)
+    moduleVersion: readPackageVersion(releaseDir),
+    bexioFieldCatalog: BEXIO_CONTACT_FIELDS,
+    exchangeFieldCatalog: EXCHANGE_CONTACT_FIELDS
   };
   if (!id) {
     return empty;
@@ -146,8 +202,21 @@ async function loadSetup(releaseDir, companyId) {
   try {
     const raw = await fsp.readFile(filePath, "utf8");
     const parsed = JSON.parse(raw);
-    const merged = { ...empty, ...parsed, fieldMapping: normalizeFieldMapping(parsed.fieldMapping) };
-    merged.defaultFieldMapping = { ...DEFAULT_FIELD_MAPPING };
+    const merged = {
+      ...empty,
+      ...parsed,
+      fieldMapping: normalizeFieldMapping(parsed.fieldMapping || {}),
+      defaultFieldMapping: { ...DEFAULT_FIELD_MAPPING },
+      bexioFieldCatalog: BEXIO_CONTACT_FIELDS,
+      exchangeFieldCatalog: EXCHANGE_CONTACT_FIELDS
+    };
+    merged.bexioEnabledKeys = Array.isArray(parsed.bexioEnabledKeys) && parsed.bexioEnabledKeys.length
+      ? parsed.bexioEnabledKeys.map(trim)
+      : allBexioKeys();
+    merged.exchangeEnabledKeys = Array.isArray(parsed.exchangeEnabledKeys) && parsed.exchangeEnabledKeys.length
+      ? parsed.exchangeEnabledKeys.map(trim)
+      : allExchangeKeys();
+    merged.protocolHistory = Array.isArray(parsed.protocolHistory) ? parsed.protocolHistory : [];
     merged.probeBexioOk = Boolean(parsed.probeBexioOk);
     merged.probeBexioAt = trim(parsed.probeBexioAt || "");
     merged.probeBexioSummary = trim(parsed.probeBexioSummary || "");
@@ -177,6 +246,20 @@ function appendLog(lines, msg, maxLines = 80) {
   if (lines.length > maxLines) {
     lines.splice(0, lines.length - maxLines);
   }
+}
+
+function probeExtras(prev) {
+  return {
+    probeBexioOk: Boolean(prev.probeBexioOk),
+    probeBexioAt: trim(prev.probeBexioAt || ""),
+    probeBexioSummary: trim(prev.probeBexioSummary || ""),
+    probeBexioLog: String(prev.probeBexioLog || ""),
+    probeEwsOk: Boolean(prev.probeEwsOk),
+    probeEwsAt: trim(prev.probeEwsAt || ""),
+    probeEwsSummary: trim(prev.probeEwsSummary || ""),
+    probeEwsLog: String(prev.probeEwsLog || ""),
+    lastSyncAt: trim(prev.lastSyncAt || "")
+  };
 }
 
 async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
@@ -212,24 +295,21 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
   }
 
   const exchangeVersion = trim(body.exchangeVersion || prev.exchangeVersion || "Exchange2016");
-  const fieldMapping = normalizeFieldMapping({
-    displayName: body.map_displayName || (prev.fieldMapping && prev.fieldMapping.displayName),
-    givenName: body.map_givenName || (prev.fieldMapping && prev.fieldMapping.givenName),
-    surname: body.map_surname || (prev.fieldMapping && prev.fieldMapping.surname),
-    companyName: body.map_companyName || (prev.fieldMapping && prev.fieldMapping.companyName),
-    emailAddress1: body.map_emailAddress1 || (prev.fieldMapping && prev.fieldMapping.emailAddress1),
-    businessPhone: body.map_businessPhone || (prev.fieldMapping && prev.fieldMapping.businessPhone),
-    mobilePhone: body.map_mobilePhone || (prev.fieldMapping && prev.fieldMapping.mobilePhone),
-    street: body.map_street || (prev.fieldMapping && prev.fieldMapping.street),
-    city: body.map_city || (prev.fieldMapping && prev.fieldMapping.city),
-    postalCode: body.map_postalCode || (prev.fieldMapping && prev.fieldMapping.postalCode)
-  });
+  const fieldMapping = buildFieldMappingFromBody(body, prev.fieldMapping);
+  const bexioEnabledKeys = readEnabledKeysFromBody(body, "bexioEnabled", prev.bexioEnabledKeys);
+  const exchangeEnabledKeys = readEnabledKeysFromBody(body, "exchangeEnabled", prev.exchangeEnabledKeys);
 
   const logLines = [];
 
   if (action === "test_bexio") {
     await probeApi(bexioBaseUrl, bexioToken);
     appendLog(logLines, "bexio: Verbindung OK (Testabruf /2.0/contact)");
+    const logText = logLines.join("\n");
+    const protocolHistory = appendProtocolHistory(prev, {
+      type: "test_bexio",
+      summary: "bexio Test OK",
+      log: logText
+    });
     const payload = {
       bexioBaseUrl,
       bexioToken,
@@ -238,13 +318,16 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      bexioEnabledKeys,
+      exchangeEnabledKeys,
+      protocolHistory,
       updatedAt: new Date().toISOString(),
-      lastSyncLog: logLines.join("\n"),
+      lastSyncLog: logText,
       lastSyncSummary: "bexio Test OK",
       probeBexioOk: true,
       probeBexioAt: new Date().toISOString(),
       probeBexioSummary: "bexio Test OK",
-      probeBexioLog: logLines.join("\n"),
+      probeBexioLog: logText,
       probeEwsOk: Boolean(prev.probeEwsOk),
       probeEwsAt: trim(prev.probeEwsAt || ""),
       probeEwsSummary: trim(prev.probeEwsSummary || ""),
@@ -264,6 +347,12 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
     const svc = createExchangeService({ ewsUrl, ewsUser, ewsPassword, exchangeVersion });
     await probeContactsFolder(svc);
     appendLog(logLines, "Exchange: Kontakte-Ordner lesbar (EWS OK)");
+    const logText = logLines.join("\n");
+    const protocolHistory = appendProtocolHistory(prev, {
+      type: "test_ews",
+      summary: "EWS Test OK",
+      log: logText
+    });
     const payload = {
       bexioBaseUrl,
       bexioToken,
@@ -272,13 +361,16 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      bexioEnabledKeys,
+      exchangeEnabledKeys,
+      protocolHistory,
       updatedAt: new Date().toISOString(),
-      lastSyncLog: logLines.join("\n"),
+      lastSyncLog: logText,
       lastSyncSummary: "EWS Test OK",
       probeEwsOk: true,
       probeEwsAt: new Date().toISOString(),
       probeEwsSummary: "EWS Test OK",
-      probeEwsLog: logLines.join("\n"),
+      probeEwsLog: logText,
       probeBexioOk: Boolean(prev.probeBexioOk),
       probeBexioAt: trim(prev.probeBexioAt || ""),
       probeBexioSummary: trim(prev.probeBexioSummary || ""),
@@ -303,6 +395,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
     }
     const idMap = await readIdMap(releaseDir, targetCompanyId);
     const logs = [];
+    const enabledExchange = exchangeEnabledFromKeys(exchangeEnabledKeys);
     const { map, stats } = await syncBexioContactsToExchange({
       bexioBaseUrl,
       bexioToken,
@@ -312,13 +405,19 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       exchangeVersion,
       fieldMapping,
       idMap,
+      enabledExchange,
       log: (line) => {
         logs.push(`${new Date().toISOString()} ${line}`);
-      },
-      fieldMapping
+      }
     });
     await writeIdMap(releaseDir, targetCompanyId, map);
     const summary = `${stats.created} neu, ${stats.updated} aktualisiert, ${stats.errors} Fehler (${stats.totalBexio} bexio)`;
+    const logText = logs.slice(-80).join("\n");
+    const protocolHistory = appendProtocolHistory(prev, {
+      type: "sync",
+      summary,
+      log: logText
+    });
     const payload = {
       bexioBaseUrl,
       bexioToken,
@@ -327,18 +426,14 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      bexioEnabledKeys,
+      exchangeEnabledKeys,
+      protocolHistory,
       updatedAt: new Date().toISOString(),
+      ...probeExtras(prev),
       lastSyncAt: new Date().toISOString(),
       lastSyncSummary: summary,
-      lastSyncLog: logs.slice(-80).join("\n"),
-      probeBexioOk: Boolean(prev.probeBexioOk),
-      probeBexioAt: trim(prev.probeBexioAt || ""),
-      probeBexioSummary: trim(prev.probeBexioSummary || ""),
-      probeBexioLog: String(prev.probeBexioLog || ""),
-      probeEwsOk: Boolean(prev.probeEwsOk),
-      probeEwsAt: trim(prev.probeEwsAt || ""),
-      probeEwsSummary: trim(prev.probeEwsSummary || ""),
-      probeEwsLog: String(prev.probeEwsLog || "")
+      lastSyncLog: logText
     };
     await fsp.mkdir(resolveConfigDir(releaseDir), { recursive: true });
     await fsp.writeFile(
@@ -363,6 +458,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
     if (!ewsUrl || !ewsUser || !ewsPassword) {
       throw new Error("Exchange EWS-Zugang unvollstaendig (URL, Benutzer, Passwort)");
     }
+    const protocolHistory = Array.isArray(prev.protocolHistory) ? prev.protocolHistory : [];
     const payload = {
       bexioBaseUrl,
       bexioToken,
@@ -371,16 +467,11 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      bexioEnabledKeys,
+      exchangeEnabledKeys,
+      protocolHistory,
       updatedAt: new Date().toISOString(),
-      probeBexioOk: Boolean(prev.probeBexioOk),
-      probeBexioAt: trim(prev.probeBexioAt || ""),
-      probeBexioSummary: trim(prev.probeBexioSummary || ""),
-      probeBexioLog: String(prev.probeBexioLog || ""),
-      probeEwsOk: Boolean(prev.probeEwsOk),
-      probeEwsAt: trim(prev.probeEwsAt || ""),
-      probeEwsSummary: trim(prev.probeEwsSummary || ""),
-      probeEwsLog: String(prev.probeEwsLog || ""),
-      lastSyncAt: trim(prev.lastSyncAt || ""),
+      ...probeExtras(prev),
       lastSyncSummary: trim(prev.lastSyncSummary || ""),
       lastSyncLog: String(prev.lastSyncLog || "")
     };

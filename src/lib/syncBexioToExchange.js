@@ -1,6 +1,7 @@
 const ews = require("ews-javascript-api");
 const { createExchangeService } = require("./exchangeServiceFactory");
 const { fetchAllContacts } = require("./bexioContacts");
+const { allExchangeKeys } = require("./fieldCatalog");
 
 function trim(value) {
   return String(value || "").trim();
@@ -22,9 +23,13 @@ const DEFAULT_FIELD_MAPPING = {
   givenName: "name_1",
   surname: "name_2",
   companyName: "name_1",
+  jobTitle: "",
+  department: "",
   emailAddress1: "mail",
+  emailAddress2: "mail_second",
   businessPhone: "phone_fixed",
   mobilePhone: "phone_mobile",
+  homePhone: "phone_home",
   street: "address",
   city: "city",
   postalCode: "postcode"
@@ -39,65 +44,120 @@ function readMappedValue(bexioRow, bexioField) {
     const full = [trim(bexioRow.name_1), trim(bexioRow.name_2)].filter(Boolean).join(" ").trim();
     return full;
   }
-  return trim(bexioRow[key]);
+  const raw = bexioRow[key];
+  if (raw === undefined || raw === null) {
+    return "";
+  }
+  if (typeof raw === "object") {
+    try {
+      return trim(JSON.stringify(raw));
+    } catch {
+      return "";
+    }
+  }
+  return trim(String(raw));
 }
 
 function normalizeFieldMapping(input) {
   const src = input && typeof input === "object" ? input : {};
-  return {
-    displayName: trim(src.displayName || DEFAULT_FIELD_MAPPING.displayName),
-    givenName: trim(src.givenName || DEFAULT_FIELD_MAPPING.givenName),
-    surname: trim(src.surname || DEFAULT_FIELD_MAPPING.surname),
-    companyName: trim(src.companyName || DEFAULT_FIELD_MAPPING.companyName),
-    emailAddress1: trim(src.emailAddress1 || DEFAULT_FIELD_MAPPING.emailAddress1),
-    businessPhone: trim(src.businessPhone || DEFAULT_FIELD_MAPPING.businessPhone),
-    mobilePhone: trim(src.mobilePhone || DEFAULT_FIELD_MAPPING.mobilePhone),
-    street: trim(src.street || DEFAULT_FIELD_MAPPING.street),
-    city: trim(src.city || DEFAULT_FIELD_MAPPING.city),
-    postalCode: trim(src.postalCode || DEFAULT_FIELD_MAPPING.postalCode)
-  };
+  const out = { ...DEFAULT_FIELD_MAPPING };
+  for (const k of Object.keys(out)) {
+    if (src[k] !== undefined && src[k] !== null) {
+      out[k] = trim(String(src[k]));
+    }
+  }
+  return out;
 }
 
-function applyBexioToEwsContact(bexioRow, contact, fieldMapping) {
+/** @param {Record<string, boolean>|null|undefined} input */
+function normalizeEnabledExchange(input) {
+  const keys = allExchangeKeys();
+  const src = input && typeof input === "object" ? input : {};
+  const out = {};
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(src, k)) {
+      out[k] = Boolean(src[k]);
+    } else {
+      out[k] = true;
+    }
+  }
+  return out;
+}
+
+function applyBexioToEwsContact(bexioRow, contact, fieldMapping, enabledExchange) {
   const map = normalizeFieldMapping(fieldMapping);
-  const display = readMappedValue(bexioRow, map.displayName) || displayNameFromBexio(bexioRow);
-  contact.DisplayName = display;
+  const en = normalizeEnabledExchange(enabledExchange);
 
-  const n1 = readMappedValue(bexioRow, map.givenName);
-  const n2 = readMappedValue(bexioRow, map.surname);
-  contact.GivenName = n1;
-  contact.Surname = n2;
-  contact.CompanyName = readMappedValue(bexioRow, map.companyName);
-
-  const mail = readMappedValue(bexioRow, map.emailAddress1);
-  if (mail.includes("@")) {
-    contact.EmailAddresses[ews.EmailAddressKey.EmailAddress1] = mail;
+  if (en.displayName !== false) {
+    const display = readMappedValue(bexioRow, map.displayName) || displayNameFromBexio(bexioRow);
+    contact.DisplayName = display;
   }
 
-  const fixed = readMappedValue(bexioRow, map.businessPhone);
-  const mobile = readMappedValue(bexioRow, map.mobilePhone);
-  if (fixed) {
-    contact.PhoneNumbers[ews.PhoneNumberKey.BusinessPhone] = fixed;
+  if (en.givenName !== false) {
+    contact.GivenName = readMappedValue(bexioRow, map.givenName);
   }
-  if (mobile) {
-    contact.PhoneNumbers[ews.PhoneNumberKey.MobilePhone] = mobile;
+  if (en.surname !== false) {
+    contact.Surname = readMappedValue(bexioRow, map.surname);
+  }
+  if (en.companyName !== false) {
+    contact.CompanyName = readMappedValue(bexioRow, map.companyName);
+  }
+  if (en.jobTitle !== false) {
+    contact.JobTitle = readMappedValue(bexioRow, map.jobTitle);
+  }
+  if (en.department !== false) {
+    contact.Department = readMappedValue(bexioRow, map.department);
   }
 
-  const street = readMappedValue(bexioRow, map.street);
-  const city = readMappedValue(bexioRow, map.city);
-  const zip = readMappedValue(bexioRow, map.postalCode);
-  if (street || city || zip) {
-    const addr = new ews.PhysicalAddressEntry();
-    if (street) {
-      addr.Street = street;
+  if (en.emailAddress1 !== false) {
+    const mail = readMappedValue(bexioRow, map.emailAddress1);
+    if (mail.includes("@")) {
+      contact.EmailAddresses[ews.EmailAddressKey.EmailAddress1] = mail;
     }
-    if (city) {
-      addr.City = city;
+  }
+  if (en.emailAddress2 !== false) {
+    const mail2 = readMappedValue(bexioRow, map.emailAddress2);
+    if (mail2.includes("@")) {
+      contact.EmailAddresses[ews.EmailAddressKey.EmailAddress2] = mail2;
     }
-    if (zip) {
-      addr.PostalCode = zip;
+  }
+
+  if (en.businessPhone !== false) {
+    const fixed = readMappedValue(bexioRow, map.businessPhone);
+    if (fixed) {
+      contact.PhoneNumbers[ews.PhoneNumberKey.BusinessPhone] = fixed;
     }
-    contact.PhysicalAddresses[ews.PhysicalAddressKey.Business] = addr;
+  }
+  if (en.mobilePhone !== false) {
+    const mobile = readMappedValue(bexioRow, map.mobilePhone);
+    if (mobile) {
+      contact.PhoneNumbers[ews.PhoneNumberKey.MobilePhone] = mobile;
+    }
+  }
+  if (en.homePhone !== false) {
+    const home = readMappedValue(bexioRow, map.homePhone);
+    if (home) {
+      contact.PhoneNumbers[ews.PhoneNumberKey.HomePhone] = home;
+    }
+  }
+
+  if (en.street !== false || en.city !== false || en.postalCode !== false) {
+    const street = en.street !== false ? readMappedValue(bexioRow, map.street) : "";
+    const city = en.city !== false ? readMappedValue(bexioRow, map.city) : "";
+    const zip = en.postalCode !== false ? readMappedValue(bexioRow, map.postalCode) : "";
+    if (street || city || zip) {
+      const addr = new ews.PhysicalAddressEntry();
+      if (street) {
+        addr.Street = street;
+      }
+      if (city) {
+        addr.City = city;
+      }
+      if (zip) {
+        addr.PostalCode = zip;
+      }
+      contact.PhysicalAddresses[ews.PhysicalAddressKey.Business] = addr;
+    }
   }
 }
 
@@ -111,10 +171,12 @@ function applyBexioToEwsContact(bexioRow, contact, fieldMapping) {
  * @param {string} [params.exchangeVersion]
  * @param {Record<string, { ewsItemId: string }>} params.idMap
  * @param {(line: string) => void} [params.log]
+ * @param {Record<string, boolean>} [params.enabledExchange]
  */
 async function syncBexioContactsToExchange(params) {
   const log = params.log || (() => {});
   const fieldMapping = normalizeFieldMapping(params.fieldMapping);
+  const enabledExchange = normalizeEnabledExchange(params.enabledExchange);
   const service = createExchangeService({
     ewsUrl: params.ewsUrl,
     ewsUser: params.ewsUser,
@@ -144,12 +206,12 @@ async function syncBexioContactsToExchange(params) {
           new ews.ItemId(existing.ewsItemId),
           ews.PropertySet.FirstClassProperties
         );
-        applyBexioToEwsContact(row, bound, fieldMapping);
+        applyBexioToEwsContact(row, bound, fieldMapping, enabledExchange);
         await bound.Update(ews.ConflictResolutionMode.AlwaysOverwrite);
         updated += 1;
       } else {
         const contact = new ews.Contact(service);
-        applyBexioToEwsContact(row, contact, fieldMapping);
+        applyBexioToEwsContact(row, contact, fieldMapping, enabledExchange);
         await contact.Save(ews.WellKnownFolderName.Contacts);
         const idObj = contact.Id;
         const uid = idObj && idObj.UniqueId ? String(idObj.UniqueId) : "";
@@ -175,5 +237,8 @@ async function syncBexioContactsToExchange(params) {
 module.exports = {
   syncBexioContactsToExchange,
   displayNameFromBexio,
-  DEFAULT_FIELD_MAPPING
+  DEFAULT_FIELD_MAPPING,
+  normalizeFieldMapping,
+  normalizeEnabledExchange,
+  applyBexioToEwsContact
 };

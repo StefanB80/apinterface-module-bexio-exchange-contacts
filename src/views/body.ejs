@@ -12,31 +12,13 @@
   const visual = (manifest && manifest.visual) ? manifest.visual : null;
   const probeBexioOk = Boolean(s.probeBexioOk);
   const probeEwsOk = Boolean(s.probeEwsOk);
-  const bexioFields = [
-    { key: 'full_name', label: 'Vollname (name_1 + name_2)' },
-    { key: 'name_1', label: 'name_1' },
-    { key: 'name_2', label: 'name_2' },
-    { key: 'mail', label: 'mail' },
-    { key: 'mail_second', label: 'mail_second' },
-    { key: 'phone_fixed', label: 'phone_fixed' },
-    { key: 'phone_mobile', label: 'phone_mobile' },
-    { key: 'phone_home', label: 'phone_home' },
-    { key: 'address', label: 'address' },
-    { key: 'city', label: 'city' },
-    { key: 'postcode', label: 'postcode' }
-  ];
-  const exchangeTargets = [
-    { key: 'displayName', label: 'Exchange DisplayName' },
-    { key: 'givenName', label: 'Exchange GivenName' },
-    { key: 'surname', label: 'Exchange Surname' },
-    { key: 'companyName', label: 'Exchange CompanyName' },
-    { key: 'emailAddress1', label: 'Exchange EmailAddress1' },
-    { key: 'businessPhone', label: 'Exchange BusinessPhone' },
-    { key: 'mobilePhone', label: 'Exchange MobilePhone' },
-    { key: 'street', label: 'Exchange Street' },
-    { key: 'city', label: 'Exchange City' },
-    { key: 'postalCode', label: 'Exchange PostalCode' }
-  ];
+  const bexioFieldList = Array.isArray(s.bexioFieldCatalog) ? s.bexioFieldCatalog : [];
+  const exchangeFieldList = Array.isArray(s.exchangeFieldCatalog) ? s.exchangeFieldCatalog : [];
+  const bexioEnabledSet = new Set(Array.isArray(s.bexioEnabledKeys) ? s.bexioEnabledKeys : []);
+  const exchangeEnabledSet = new Set(Array.isArray(s.exchangeEnabledKeys) ? s.exchangeEnabledKeys : []);
+  const protocolHistory = Array.isArray(s.protocolHistory) ? s.protocolHistory : [];
+  const protocolHistoryDesc = protocolHistory.slice().reverse();
+
   function formatIso(value) {
     if (!value) return '';
     const d = new Date(value);
@@ -46,21 +28,29 @@
   function probeSvgTitle(isBexio) {
     if (isBexio) {
       if (probeBexioOk) {
-        return 'bexio: Verbindung zuletzt erfolgreich. ' + (s.probeBexioSummary || '') + ' (' + formatIso(s.probeBexioAt) + '). Klick oeffnet das Protokoll unten.';
+        return 'bexio: Verbindung zuletzt erfolgreich. ' + (s.probeBexioSummary || '') + ' (' + formatIso(s.probeBexioAt) + '). Klick: Protokollliste unten.';
       }
-      return 'bexio: Noch kein erfolgreicher Test. Felder pruefen und «bexio testen» waehlen. Protokoll weiter unten.';
+      return 'bexio: Noch kein erfolgreicher Test. «bexio testen» ausfuehren.';
     }
     if (probeEwsOk) {
-      return 'Exchange: Verbindung zuletzt erfolgreich. ' + (s.probeEwsSummary || '') + ' (' + formatIso(s.probeEwsAt) + '). Klick oeffnet das Protokoll unten.';
+      return 'Exchange: Verbindung zuletzt erfolgreich. ' + (s.probeEwsSummary || '') + ' (' + formatIso(s.probeEwsAt) + '). Klick: Protokollliste unten.';
     }
-    return 'Exchange: Noch kein erfolgreicher Test. Felder pruefen und «EWS testen» waehlen. Protokoll weiter unten.';
+    return 'Exchange: Noch kein erfolgreicher Test. «EWS testen» ausfuehren.';
   }
-  const mappingComplete = exchangeTargets.every(function (t) { return String(mapping[t.key] || '').trim().length > 0; });
+  function protocolTypeLabel(t) {
+    if (t === 'test_bexio') return 'bexio-Test';
+    if (t === 'test_ews') return 'EWS-Test';
+    if (t === 'sync') return 'Synchronisation';
+    return String(t || '—');
+  }
+  const enabledExchangeKeysList = exchangeFieldList.filter(function (t) { return exchangeEnabledSet.has(t.key); }).map(function (t) { return t.key; });
+  const mappingComplete = enabledExchangeKeysList.length > 0 && enabledExchangeKeysList.every(function (k) { return String(mapping[k] || '').trim().length > 0; });
 %>
 <style>
-  .bec-flow-svg { width: 100%; min-height: 420px; max-height: 560px; }
+  .bec-flow-card { margin-bottom: 1rem; }
+  .bec-flow-svg { width: 100%; height: auto; min-height: 480px; display: block; }
   .bec-flow-svg a { cursor: pointer; }
-  .bec-flow-status { font-size: 22px; font-weight: 700; }
+  .bec-flow-status { font-size: 26px; font-weight: 700; }
   .bec-flow-status--ok { fill: #1f6b33; }
   .bec-flow-status--warn { fill: #b45309; }
   .bec-panel { border: 1px solid #d7dfeb; border-radius: 10px; padding: 0 12px; margin-bottom: 12px; background: #fafbfd; }
@@ -69,186 +59,237 @@
   .bec-panel > summary::after { content: '▾'; font-size: 12px; color: #5e6b7c; }
   .bec-panel[open] > summary::after { content: '▴'; }
   .bec-okpill { display: inline-flex; align-items: center; gap: 4px; color: #1f6b33; font-size: 13px; font-weight: 700; }
-  .bec-map-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; position: relative; min-height: 340px; margin-top: 8px; }
+  .bec-field-sub { margin-top: 10px; background: #fff; border: 1px dashed #c5d0e0; border-radius: 8px; padding: 0 10px 10px; }
+  .bec-field-sub > summary { font-weight: 600; font-size: 14px; padding: 10px 4px; }
+  .bec-cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 14px; margin-top: 8px; }
+  .bec-cb-item { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35; padding: 6px 8px; border-radius: 6px; border: 1px solid #eef2f7; background: #fcfdff; }
+  .bec-cb-item input { margin-top: 3px; }
+  .bec-map-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; position: relative; min-height: 400px; margin-top: 12px; }
   .bec-map-svg-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; overflow: visible; }
-  .bec-map-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; }
-  .bec-map-col h4 { margin: 0 0 4px; font-size: 13px; color: #5e6b7c; text-transform: uppercase; letter-spacing: 0.02em; }
-  .bec-map-item { border: 1px solid #d7dfeb; border-radius: 8px; padding: 8px 10px; background: #fff; cursor: pointer; text-align: left; font: inherit; width: 100%; box-sizing: border-box; transition: box-shadow 0.12s ease, border-color 0.12s ease; }
+  .bec-map-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; }
+  .bec-map-col h4 { margin: 0 0 6px; font-size: 13px; color: #5e6b7c; text-transform: uppercase; letter-spacing: 0.02em; }
+  .bec-map-item { border: 1px solid #d7dfeb; border-radius: 8px; padding: 12px 14px; background: #fff; cursor: pointer; text-align: left; font: inherit; width: 100%; box-sizing: border-box; transition: box-shadow 0.12s ease, border-color 0.12s ease; }
   .bec-map-item:hover { border-color: #245dff; box-shadow: 0 2px 8px rgba(36, 93, 255, 0.12); }
   .bec-map-item.is-picked { outline: 2px solid #245dff; outline-offset: 1px; }
   .bec-map-item.is-mapped { border-color: #8eb0ff; background: #f5f8ff; }
-  .bec-map-item small { display: block; color: #5e6b7c; font-size: 12px; margin-top: 2px; }
-  .bec-map-hint { font-size: 13px; color: #5e6b7c; margin: 0 0 8px; }
-  .bec-map-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .bec-map-item.is-disabled { opacity: 0.45; pointer-events: none; }
+  .bec-map-item small { display: block; color: #5e6b7c; font-size: 12px; margin-top: 4px; }
+  .bec-map-hint { font-size: 13px; color: #5e6b7c; margin: 0 0 10px; max-width: 920px; }
+  .bec-map-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .bec-proto-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .bec-proto-table th, .bec-proto-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+  .bec-proto-table th { background: #f8fafc; }
+  .bec-proto-pre { white-space: pre-wrap; font-size: 12px; max-height: 240px; overflow: auto; background: #f8fafc; padding: 10px; border-radius: 8px; margin-top: 8px; }
 </style>
 <div class="grid-1">
   <% if (err) { %><div class="alert"><%= err %></div><% } %>
   <% if (ok) { %><div class="alert ok" data-auto-dismiss="1">Aktion erfolgreich ausgefuehrt.</div><% } %>
 
-  <div class="card" id="bec-protocol">
-    <p class="muted">
-      Richtung: <strong>bexio → Exchange</strong> (Kontakte im Postfachordner «Kontakte»). Konfiguration pro Firma in
-      <code>var/company-&lt;id&gt;.json</code>, Laufzuordnung in
-      <code>var/company-&lt;id&gt;-bexio-exchange-contact-map.json</code>.
-    </p>
-    <% if (s.lastSyncSummary) { %>
-      <p class="muted">Letzter Lauf: <strong><%= s.lastSyncSummary %></strong> <% if (s.lastSyncAt) { %>(<%= formatIso(s.lastSyncAt) %>)<% } %></p>
-    <% } %>
-    <% if (s.lastSyncLog) { %>
-      <details style="margin-bottom:1rem;">
-        <summary class="muted">Protokoll</summary>
-        <pre style="white-space:pre-wrap;font-size:.85rem;margin-top:.5rem;"><%= s.lastSyncLog %></pre>
-      </details>
+  <div class="card bec-flow-card">
+    <h2>Datenstroeme</h2>
+    <% if (visual && visual.circle && Array.isArray(visual.apps)) { %>
+      <svg class="bec-flow-svg" viewBox="0 0 1200 680" aria-label="Modul-Datenfluss">
+        <defs>
+          <marker id="bec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f4fb3"></path>
+          </marker>
+        </defs>
+        <circle cx="<%= visual.circle.center.x %>" cy="<%= visual.circle.center.y %>" r="<%= visual.circle.radius %>" fill="none" stroke="#6379d8" stroke-width="2.5" stroke-dasharray="12 12"></circle>
+        <% visual.apps.forEach(function(app) { %>
+          <% const isBexio = app.id === 'bexio'; const stOk = isBexio ? probeBexioOk : probeEwsOk; %>
+          <g>
+            <a href="#bec-protocol-list" tabindex="0">
+              <title><%= probeSvgTitle(isBexio) %></title>
+              <circle cx="<%= app.position.x %>" cy="<%= app.position.y %>" r="48" fill="#e9efff" stroke="#2f4fb3" stroke-width="3"></circle>
+              <text class="bec-flow-status <%= stOk ? 'bec-flow-status--ok' : 'bec-flow-status--warn' %>" x="<%= app.position.x + 62 %>" y="<%= app.position.y + 10 %>" text-anchor="start"><%= stOk ? '✓' : '!' %></text>
+            </a>
+            <text x="<%= app.position.x %>" y="<%= app.position.y + 82 %>" text-anchor="middle" fill="#1a2340" font-size="17" font-weight="700"><%= app.label %></text>
+          </g>
+        <% }); %>
+        <% (visual.dataStreams || []).forEach(function(stream) { %>
+          <% const src = visual.apps.find(function(a) { return a.id === stream.source; }); const tgt = visual.apps.find(function(a) { return a.id === stream.target; }); %>
+          <% if (src && tgt) { %>
+            <g>
+              <line x1="<%= src.position.x %>" y1="<%= src.position.y %>" x2="<%= tgt.position.x %>" y2="<%= tgt.position.y %>" stroke="#2f4fb3" stroke-width="3" marker-end="url(#bec-arrow)"></line>
+              <text x="<%= stream.midpoint.x %>" y="<%= stream.midpoint.y %>" text-anchor="middle" fill="#27418f" font-size="14" font-weight="600"><%= stream.label %></text>
+            </g>
+          <% } %>
+        <% }); %>
+        <text x="<%= visual.circle.center.x %>" y="<%= visual.circle.center.y %>" text-anchor="middle" fill="#1a2340" font-size="20" font-weight="700">Kontaktsync</text>
+      </svg>
+      <p class="muted" style="font-size:13px;margin-top:10px;">Kreise: Hover zeigt Status-Tooltip, Klick springt zur <a href="#bec-protocol-list">Protokollliste</a>.</p>
     <% } else { %>
-      <p class="muted" style="margin-bottom:0;">Noch kein Protokolltext. Nach «bexio testen», «EWS testen» oder Synchronisation erscheint das Log hier.</p>
+      <p class="muted">Keine Visualisierung im Manifest.</p>
     <% } %>
   </div>
 
-  <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start;">
-    <div class="card">
-      <h2>Setup</h2>
-      <form method="post" action="<%= modulePath %>/setup" class="grid-1" autocomplete="on" id="bec-setup-form">
-        <input type="hidden" name="setupCompanyId" value="<%= ctxCompanyId %>">
+  <div class="card">
+    <h2>Setup</h2>
+    <form method="post" action="<%= modulePath %>/setup" class="grid-1" autocomplete="on" id="bec-setup-form">
+      <input type="hidden" name="setupCompanyId" value="<%= ctxCompanyId %>">
 
-        <% exchangeTargets.forEach(function(target) { %>
-          <input type="hidden" name="map_<%= target.key %>" id="bec_map_<%= target.key %>" value="<%= mapping[target.key] || '' %>">
-        <% }); %>
+      <% exchangeFieldList.forEach(function(target) { %>
+        <input type="hidden" name="map_<%= target.key %>" id="bec_map_<%= target.key %>" value="<%= mapping[target.key] != null ? mapping[target.key] : '' %>">
+      <% }); %>
 
-        <details class="bec-panel" <%= probeBexioOk ? '' : 'open' %>>
-          <summary>
-            <span>bexio</span>
-            <% if (probeBexioOk) { %>
-              <span class="bec-okpill" title="Letzter Test: <%= formatIso(s.probeBexioAt) %>">OK ✓</span>
-            <% } else { %>
-              <span class="muted" style="font-weight:600;">Prüfen</span>
-            <% } %>
-          </summary>
-          <div style="padding: 0 4px 12px;">
-            <label for="bexioBaseUrl">API Basis-URL</label>
-            <input id="bexioBaseUrl" name="bexioBaseUrl" type="url" value="<%= bexioUrl %>" placeholder="https://api.bexio.com" required>
-            <label for="bexioToken">Persoenlicher API-Token</label>
-            <input id="bexioToken" name="bexioToken" type="password" value="" autocomplete="off" placeholder="<%= s.bexioTokenMasked ? '(gesetzt, ' + s.bexioTokenMasked + ')' : (s.bexioTokenSet ? '(gesetzt)' : 'Token einfuegen') %>">
-            <div class="row-actions" style="gap:.5rem;">
-              <button type="submit" name="action" value="test_bexio" class="button secondary small">bexio testen</button>
-            </div>
-          </div>
-        </details>
+      <details class="bec-panel" <%= probeBexioOk ? '' : 'open' %>>
+        <summary>
+          <span>bexio</span>
+          <% if (probeBexioOk) { %>
+            <span class="bec-okpill" title="Letzter Test: <%= formatIso(s.probeBexioAt) %>">OK ✓</span>
+          <% } else { %>
+            <span class="muted" style="font-weight:600;">Prüfen</span>
+          <% } %>
+        </summary>
+        <div style="padding: 0 4px 12px;">
+          <label for="bexioBaseUrl">API Basis-URL</label>
+          <input id="bexioBaseUrl" name="bexioBaseUrl" type="url" value="<%= bexioUrl %>" placeholder="https://api.bexio.com" required>
+          <label for="bexioToken">Persoenlicher API-Token</label>
+          <input id="bexioToken" name="bexioToken" type="password" value="" autocomplete="off" placeholder="<%= s.bexioTokenMasked ? '(gesetzt, ' + s.bexioTokenMasked + ')' : (s.bexioTokenSet ? '(gesetzt)' : 'Token einfuegen') %>">
 
-        <details class="bec-panel" <%= probeEwsOk ? '' : 'open' %>>
-          <summary>
-            <span>Exchange (EWS)</span>
-            <% if (probeEwsOk) { %>
-              <span class="bec-okpill" title="Letzter Test: <%= formatIso(s.probeEwsAt) %>">OK ✓</span>
-            <% } else { %>
-              <span class="muted" style="font-weight:600;">Prüfen</span>
-            <% } %>
-          </summary>
-          <div style="padding: 0 4px 12px;">
-            <label for="ewsUrl">EWS Endpoint</label>
-            <input id="ewsUrl" name="ewsUrl" type="url" value="<%= ewsUrlVal %>" placeholder="https://mail.example.com/EWS/Exchange.asmx" required>
-            <label for="ewsUser">Benutzer (z. B. DOMAIN\\user oder UPN)</label>
-            <input id="ewsUser" name="ewsUser" type="text" value="<%= ewsUserVal %>" autocomplete="username" required>
-            <label for="ewsPassword">Passwort</label>
-            <input id="ewsPassword" name="ewsPassword" type="password" value="" autocomplete="current-password" placeholder="<%= s.ewsPasswordSet ? '(unveraendert lassen)' : 'Passwort' %>">
-            <label for="exchangeVersion">Exchange-Version (EWS)</label>
-            <select id="exchangeVersion" name="exchangeVersion">
-              <% ['Exchange2016','Exchange2013_SP1','Exchange2013','Exchange2015','Exchange2010_SP2'].forEach(function(v) { %>
-                <option value="<%= v %>" <%= exVer === v ? 'selected' : '' %>><%= v %></option>
+          <details class="bec-field-sub" open>
+            <summary>Kontaktfelder (bexio API) — für Zuordnung und Übernahme aktivieren</summary>
+            <div class="bec-cb-grid">
+              <% bexioFieldList.forEach(function(f) { %>
+                <label class="bec-cb-item">
+                  <input type="checkbox" name="bexioEnabled" value="<%= f.key %>" <%= bexioEnabledSet.has(f.key) ? 'checked' : '' %>>
+                  <span><%= f.label %> <small class="muted">(<%= f.key %>)</small></span>
+                </label>
               <% }); %>
-            </select>
-            <div class="row-actions" style="gap:.5rem;">
-              <button type="submit" name="action" value="test_ews" class="button secondary small">EWS testen</button>
             </div>
-          </div>
-        </details>
+          </details>
 
-        <details class="bec-panel" <%= (probeBexioOk && probeEwsOk && mappingComplete) ? '' : 'open' %>>
-          <summary>
-            <span>Feldzuordnung bexio → Exchange</span>
-            <% if (mappingComplete) { %>
-              <span class="bec-okpill">OK ✓</span>
-            <% } else { %>
-              <span class="muted" style="font-weight:600;">Zuordnen</span>
-            <% } %>
-          </summary>
-          <div style="padding: 0 4px 12px;">
-            <p class="bec-map-hint">Zuordnung wie «Linien ziehen»: zuerst ein <strong>Exchange-Feld</strong> (rechts) antippen, dann das passende <strong>bexio-Feld</strong> (links). Es entsteht eine Linie. Mehrfachzuordnungen sind möglich.</p>
-            <div class="bec-map-wrap" id="bec-map-wrap">
-              <svg class="bec-map-svg-layer" id="bec-map-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
-              <div class="bec-map-col">
-                <h4>bexio (Quelle)</h4>
-                <% bexioFields.forEach(function(f) { %>
-                  <button type="button" class="bec-map-item bec-map-src" data-bec-src="<%= f.key %>">
-                    <%= f.label %>
-                    <small><code><%= f.key %></code></small>
-                  </button>
-                <% }); %>
-              </div>
-              <div class="bec-map-col">
-                <h4>Exchange (Ziel)</h4>
-                <% exchangeTargets.forEach(function(t) { %>
-                  <button type="button" class="bec-map-item bec-map-tgt" data-bec-tgt="<%= t.key %>">
-                    <%= t.label %>
-                    <small id="bec_tgt_hint_<%= t.key %>">← <%= (mapping[t.key] || '—') %></small>
-                  </button>
-                <% }); %>
-              </div>
-            </div>
-            <div class="bec-map-actions">
-              <button type="button" class="button secondary small" id="bec-map-reset">Standard-Zuordnung</button>
-            </div>
+          <div class="row-actions" style="gap:.5rem;">
+            <button type="submit" name="action" value="test_bexio" class="button secondary small">bexio testen</button>
           </div>
-        </details>
-
-        <div class="row-actions" style="margin-top:1rem;gap:.5rem;">
-          <button type="submit" name="action" value="save" class="button">Speichern</button>
-          <button type="submit" name="action" value="sync" class="button">Jetzt synchronisieren</button>
         </div>
-      </form>
-      <% if (manifest && manifest.version) { %>
-        <p class="muted" style="margin-top:1rem;">Modulversion <%= manifest.version %><% if (s.moduleVersion) { %> · Paket <%= s.moduleVersion %><% } %></p>
-      <% } %>
-    </div>
+      </details>
 
-    <div class="card">
-      <h2>Datenstroeme</h2>
-      <% if (visual && visual.circle && Array.isArray(visual.apps)) { %>
-        <svg class="bec-flow-svg" viewBox="0 0 900 520" aria-label="Modul-Datenfluss">
-          <defs>
-            <marker id="bec-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f4fb3"></path>
-            </marker>
-          </defs>
-          <circle cx="<%= visual.circle.center.x %>" cy="<%= visual.circle.center.y %>" r="<%= visual.circle.radius %>" fill="none" stroke="#6379d8" stroke-width="2" stroke-dasharray="10 10"></circle>
-          <% visual.apps.forEach(function(app) { %>
-            <% const isBexio = app.id === 'bexio'; const stOk = isBexio ? probeBexioOk : probeEwsOk; %>
-            <g>
-              <a href="#bec-protocol" tabindex="0">
-                <title><%= probeSvgTitle(isBexio) %></title>
-                <circle cx="<%= app.position.x %>" cy="<%= app.position.y %>" r="40" fill="#e9efff" stroke="#2f4fb3" stroke-width="2.5"></circle>
-                <text class="bec-flow-status <%= stOk ? 'bec-flow-status--ok' : 'bec-flow-status--warn' %>" x="<%= app.position.x + 52 %>" y="<%= app.position.y + 8 %>" text-anchor="start"><%= stOk ? '✓' : '!' %></text>
-              </a>
-              <text x="<%= app.position.x %>" y="<%= app.position.y + 68 %>" text-anchor="middle" fill="#1a2340" font-size="15" font-weight="700"><%= app.label %></text>
-            </g>
+      <details class="bec-panel" <%= probeEwsOk ? '' : 'open' %>>
+        <summary>
+          <span>Exchange (EWS)</span>
+          <% if (probeEwsOk) { %>
+            <span class="bec-okpill" title="Letzter Test: <%= formatIso(s.probeEwsAt) %>">OK ✓</span>
+          <% } else { %>
+            <span class="muted" style="font-weight:600;">Prüfen</span>
+          <% } %>
+        </summary>
+        <div style="padding: 0 4px 12px;">
+          <label for="ewsUrl">EWS Endpoint</label>
+          <input id="ewsUrl" name="ewsUrl" type="url" value="<%= ewsUrlVal %>" placeholder="https://mail.example.com/EWS/Exchange.asmx" required>
+          <label for="ewsUser">Benutzer (z. B. DOMAIN\\user oder UPN)</label>
+          <input id="ewsUser" name="ewsUser" type="text" value="<%= ewsUserVal %>" autocomplete="username" required>
+          <label for="ewsPassword">Passwort</label>
+          <input id="ewsPassword" name="ewsPassword" type="password" value="" autocomplete="current-password" placeholder="<%= s.ewsPasswordSet ? '(unveraendert lassen)' : 'Passwort' %>">
+          <label for="exchangeVersion">Exchange-Version (EWS)</label>
+          <select id="exchangeVersion" name="exchangeVersion">
+            <% ['Exchange2016','Exchange2013_SP1','Exchange2013','Exchange2015','Exchange2010_SP2'].forEach(function(v) { %>
+              <option value="<%= v %>" <%= exVer === v ? 'selected' : '' %>><%= v %></option>
+            <% }); %>
+          </select>
+
+          <details class="bec-field-sub" open>
+            <summary>Kontaktfelder (Exchange) — in die Synchronisation einbeziehen</summary>
+            <div class="bec-cb-grid">
+              <% exchangeFieldList.forEach(function(f) { %>
+                <label class="bec-cb-item">
+                  <input type="checkbox" name="exchangeEnabled" value="<%= f.key %>" <%= exchangeEnabledSet.has(f.key) ? 'checked' : '' %>>
+                  <span><%= f.label %> <small class="muted">(<%= f.key %>)</small></span>
+                </label>
+              <% }); %>
+            </div>
+          </details>
+
+          <div class="row-actions" style="gap:.5rem;">
+            <button type="submit" name="action" value="test_ews" class="button secondary small">EWS testen</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="bec-panel" <%= (probeBexioOk && probeEwsOk && mappingComplete) ? '' : 'open' %>>
+        <summary>
+          <span>Feldzuordnung bexio → Exchange</span>
+          <% if (mappingComplete) { %>
+            <span class="bec-okpill">OK ✓</span>
+          <% } else { %>
+            <span class="muted" style="font-weight:600;">Zuordnen</span>
+          <% } %>
+        </summary>
+        <div style="padding: 0 4px 12px;">
+          <p class="bec-map-hint">Zuordnung wie «Linien ziehen»: zuerst ein <strong>Exchange-Feld</strong> (rechts) antippen, dann das passende <strong>bexio-Feld</strong> (links). Nur aktivierte Felder (Checkboxen oben) erscheinen. Mehrfachzuordnungen (mehrere Ziele → gleiche Quelle) sind möglich.</p>
+          <div class="bec-map-wrap" id="bec-map-wrap">
+            <svg class="bec-map-svg-layer" id="bec-map-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+            <div class="bec-map-col">
+              <h4>bexio (Quelle)</h4>
+              <% bexioFieldList.forEach(function(f) { %>
+                <button type="button" class="bec-map-item bec-map-src <%= bexioEnabledSet.has(f.key) ? '' : 'is-disabled' %>" data-bec-src="<%= f.key %>">
+                  <%= f.label %>
+                  <small><code><%= f.key %></code></small>
+                </button>
+              <% }); %>
+            </div>
+            <div class="bec-map-col">
+              <h4>Exchange (Ziel)</h4>
+              <% exchangeFieldList.forEach(function(t) { %>
+                <button type="button" class="bec-map-item bec-map-tgt <%= exchangeEnabledSet.has(t.key) ? '' : 'is-disabled' %>" data-bec-tgt="<%= t.key %>" <%= exchangeEnabledSet.has(t.key) ? '' : 'disabled' %>>
+                  <%= t.label %>
+                  <small id="bec_tgt_hint_<%= t.key %>">← <%= (mapping[t.key] || '—') %></small>
+                </button>
+              <% }); %>
+            </div>
+          </div>
+          <div class="bec-map-actions">
+            <button type="button" class="button secondary small" id="bec-map-reset">Standard-Zuordnung</button>
+          </div>
+        </div>
+      </details>
+
+      <div class="row-actions" style="margin-top:1rem;gap:.5rem;">
+        <button type="submit" name="action" value="save" class="button">Speichern</button>
+        <button type="submit" name="action" value="sync" class="button">Jetzt synchronisieren</button>
+      </div>
+    </form>
+    <% if (manifest && manifest.version) { %>
+      <p class="muted" style="margin-top:1rem;">Modulversion <%= manifest.version %><% if (s.moduleVersion) { %> · Paket <%= s.moduleVersion %><% } %></p>
+    <% } %>
+  </div>
+
+  <div class="card" id="bec-protocol-list">
+    <h2>Protokollliste</h2>
+    <p class="muted" style="margin-top:0;">Gespeicherte Läufe (Tests und Synchronisation). «Anzeigen» klappt den Text auf, «Download» speicht eine Textdatei.</p>
+    <% if (!protocolHistoryDesc.length) { %>
+      <p class="muted">Noch keine Einträge. Nach einem Test oder einer Synchronisation erscheinen Protokolle hier.</p>
+    <% } else { %>
+      <table class="bec-proto-table">
+        <thead>
+          <tr>
+            <th>Zeit</th>
+            <th>Typ</th>
+            <th>Kurztext</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% protocolHistoryDesc.forEach(function(row) { %>
+            <tr>
+              <td><%= formatIso(row.at) %></td>
+              <td><%= protocolTypeLabel(row.type) %></td>
+              <td><%= row.summary || '—' %></td>
+              <td>
+                <details>
+                  <summary class="button secondary small" style="display:inline-block;margin:0;cursor:pointer;">Anzeigen</summary>
+                  <div class="bec-proto-pre"><%= row.log || '—' %></div>
+                </details>
+                <button type="button" class="button secondary small bec-dl-btn" data-id="<%= row.id %>">Download</button>
+              </td>
+            </tr>
           <% }); %>
-          <% (visual.dataStreams || []).forEach(function(stream) { %>
-            <% const src = visual.apps.find(function(a) { return a.id === stream.source; }); const tgt = visual.apps.find(function(a) { return a.id === stream.target; }); %>
-            <% if (src && tgt) { %>
-              <g>
-                <line x1="<%= src.position.x %>" y1="<%= src.position.y %>" x2="<%= tgt.position.x %>" y2="<%= tgt.position.y %>" stroke="#2f4fb3" stroke-width="2.5" marker-end="url(#bec-arrow)"></line>
-                <text x="<%= stream.midpoint.x %>" y="<%= stream.midpoint.y %>" text-anchor="middle" fill="#27418f" font-size="13" font-weight="600"><%= stream.label %></text>
-              </g>
-            <% } %>
-          <% }); %>
-          <text x="<%= visual.circle.center.x %>" y="<%= visual.circle.center.y %>" text-anchor="middle" fill="#1a2340" font-size="17" font-weight="700">Kontaktsync</text>
-        </svg>
-        <p class="muted" style="font-size:13px;margin-top:8px;">Hinweis: Auf die Kreise tippen springt zum <a href="#bec-protocol">Protokoll</a>. Tooltip erscheint beim Hover über den Kreis (Status der letzten Tests).</p>
-      <% } else { %>
-        <p class="muted">Keine Visualisierung im Manifest.</p>
-      <% } %>
-    </div>
+        </tbody>
+      </table>
+    <% } %>
   </div>
 </div>
+<script type="application/json" id="bec-protocol-json"><%- JSON.stringify(protocolHistoryDesc) %></script>
 <script type="application/json" id="bec-default-map"><%- JSON.stringify(defMap) %></script>
 <script>
 (function () {
@@ -281,12 +322,12 @@
     if (w < 2 || h < 2) return;
     svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
 
-    var tgts = wrap.querySelectorAll('.bec-map-tgt');
+    var tgts = wrap.querySelectorAll('.bec-map-tgt:not([disabled])');
     tgts.forEach(function (btn) {
       var tgtKey = btn.getAttribute('data-bec-tgt');
       var srcKey = readHidden(tgtKey);
       if (!srcKey) return;
-      var srcEl = wrap.querySelector('.bec-map-src[data-bec-src="' + srcKey + '"]');
+      var srcEl = wrap.querySelector('.bec-map-src[data-bec-src="' + srcKey + '"]:not(.is-disabled)');
       if (!srcEl || !btn) return;
       var wr = wrap.getBoundingClientRect();
       var a = srcEl.getBoundingClientRect();
@@ -311,15 +352,16 @@
     wrap.querySelectorAll('.bec-map-src').forEach(function (el) { el.classList.remove('is-mapped'); });
     wrap.querySelectorAll('.bec-map-tgt').forEach(function (el) {
       el.classList.remove('is-mapped');
+      if (el.disabled) return;
       var tgtKey = el.getAttribute('data-bec-tgt');
       if (readHidden(tgtKey)) el.classList.add('is-mapped');
     });
-    wrap.querySelectorAll('.bec-map-tgt').forEach(function (el) {
+    wrap.querySelectorAll('.bec-map-tgt:not([disabled])').forEach(function (el) {
       var tgtKey = el.getAttribute('data-bec-tgt');
       var sk = readHidden(tgtKey);
       if (!sk) return;
       var srcEl = wrap.querySelector('.bec-map-src[data-bec-src="' + sk + '"]');
-      if (srcEl) srcEl.classList.add('is-mapped');
+      if (srcEl && !srcEl.classList.contains('is-disabled')) srcEl.classList.add('is-mapped');
     });
   }
 
@@ -328,7 +370,7 @@
     redrawLines();
   }
 
-  wrap.querySelectorAll('.bec-map-tgt').forEach(function (btn) {
+  wrap.querySelectorAll('.bec-map-tgt:not([disabled])').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var k = btn.getAttribute('data-bec-tgt');
       if (pickedTgt === k) {
@@ -342,7 +384,7 @@
     });
   });
 
-  wrap.querySelectorAll('.bec-map-src').forEach(function (btn) {
+  wrap.querySelectorAll('.bec-map-src:not(.is-disabled)').forEach(function (btn) {
     btn.addEventListener('click', function () {
       if (!pickedTgt) return;
       var sk = btn.getAttribute('data-bec-src');
@@ -360,7 +402,10 @@
       var def = JSON.parse(defNode.textContent || '{}');
       resetBtn.addEventListener('click', function () {
         Object.keys(def).forEach(function (k) {
-          setHidden(k, def[k] || '');
+          var tgtBtn = wrap.querySelector('.bec-map-tgt[data-bec-tgt="' + k + '"]');
+          if (tgtBtn && !tgtBtn.disabled) {
+            setHidden(k, def[k] || '');
+          }
         });
         pickedTgt = null;
         wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
@@ -375,5 +420,31 @@
   }
   refresh();
   setTimeout(refresh, 120);
+})();
+
+(function () {
+  var raw = document.getElementById('bec-protocol-json');
+  if (!raw) return;
+  var list;
+  try {
+    list = JSON.parse(raw.textContent || '[]');
+  } catch (e) {
+    return;
+  }
+  document.querySelectorAll('.bec-dl-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-id');
+      var entry = list.find(function (x) { return x.id === id; });
+      if (!entry) return;
+      var text = (entry.log || '').replace(/\r/g, '');
+      var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      var a = document.createElement('a');
+      var safe = String(entry.type || 'log').replace(/[^a-z0-9_-]/gi, '_');
+      a.download = 'apinterface-bec-' + safe + '-' + String(id).replace(/[^a-z0-9_-]/gi, '') + '.txt';
+      a.href = URL.createObjectURL(blob);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1500);
+    });
+  });
 })();
 </script>
