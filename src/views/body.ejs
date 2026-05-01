@@ -28,14 +28,19 @@
   function probeSvgTitle(isBexio) {
     if (isBexio) {
       if (probeBexioOk) {
-        return 'bexio: Verbindung zuletzt erfolgreich. ' + (s.probeBexioSummary || '') + ' (' + formatIso(s.probeBexioAt) + '). Klick: Protokollliste unten.';
+        return 'bexio: Verbindung zuletzt erfolgreich. ' + (s.probeBexioSummary || '') + ' (' + formatIso(s.probeBexioAt) + '). Klick: Setup-Panel bexio oeffnen.';
       }
       return 'bexio: Noch kein erfolgreicher Test. «bexio testen» ausfuehren.';
     }
     if (probeEwsOk) {
-      return 'Exchange: Verbindung zuletzt erfolgreich. ' + (s.probeEwsSummary || '') + ' (' + formatIso(s.probeEwsAt) + '). Klick: Protokollliste unten.';
+      return 'Exchange: Verbindung zuletzt erfolgreich. ' + (s.probeEwsSummary || '') + ' (' + formatIso(s.probeEwsAt) + '). Klick: Setup-Panel Exchange oeffnen.';
     }
     return 'Exchange: Noch kein erfolgreicher Test. «EWS testen» ausfuehren.';
+  }
+  function setupAnchorForApp(appId) {
+    if (appId === 'bexio') return '#bec-setup-bexio';
+    if (appId === 'exchange') return '#bec-setup-exchange';
+    return '#bec-setup-form';
   }
   function protocolTypeLabel(t) {
     if (t === 'test_bexio') return 'bexio-Test';
@@ -63,7 +68,32 @@
   .bec-field-sub > summary { font-weight: 600; font-size: 14px; padding: 10px 4px; }
   .bec-cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 14px; margin-top: 8px; }
   .bec-cb-item { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35; padding: 6px 8px; border-radius: 6px; border: 1px solid #eef2f7; background: #fcfdff; }
-  .bec-cb-item input { margin-top: 3px; }
+  .bec-cb-item input { margin-top: 3px; flex-shrink: 0; }
+  /* Linksbuendig: volle Zellenbreite; globales Core-`label` per Spezifitaet uebersteuern */
+  .bec-cb-grid.apiface-check-list-left {
+    justify-items: stretch;
+    align-items: stretch;
+  }
+  .bec-cb-grid.apiface-check-list-left label.bec-cb-item {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    font-weight: 500;
+    justify-self: stretch;
+    justify-content: flex-start;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .bec-cb-grid.apiface-check-list-left label.bec-cb-item > span {
+    text-align: left;
+    flex: 1;
+    min-width: 0;
+  }
+  .bec-cb-grid.apiface-check-list-left label.bec-cb-item > span small {
+    text-align: left;
+  }
   .bec-map-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; position: relative; min-height: 400px; margin-top: 12px; }
   .bec-map-svg-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; overflow: visible; }
   .bec-map-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; }
@@ -98,7 +128,7 @@
         <% visual.apps.forEach(function(app) { %>
           <% const isBexio = app.id === 'bexio'; const stOk = isBexio ? probeBexioOk : probeEwsOk; %>
           <g>
-            <a href="#bec-protocol-list" tabindex="0">
+            <a href="<%= setupAnchorForApp(app.id) %>" tabindex="0" class="bec-flow-setup-link">
               <title><%= probeSvgTitle(isBexio) %></title>
               <circle cx="<%= app.position.x %>" cy="<%= app.position.y %>" r="48" fill="#e9efff" stroke="#2f4fb3" stroke-width="3"></circle>
               <text class="bec-flow-status <%= stOk ? 'bec-flow-status--ok' : 'bec-flow-status--warn' %>" x="<%= app.position.x + 62 %>" y="<%= app.position.y + 10 %>" text-anchor="start"><%= stOk ? '✓' : '!' %></text>
@@ -117,7 +147,7 @@
         <% }); %>
         <text x="<%= visual.circle.center.x %>" y="<%= visual.circle.center.y %>" text-anchor="middle" fill="#1a2340" font-size="20" font-weight="700">Kontaktsync</text>
       </svg>
-      <p class="muted" style="font-size:13px;margin-top:10px;">Kreise: Hover zeigt Status-Tooltip, Klick springt zur <a href="#bec-protocol-list">Protokollliste</a>.</p>
+      <p class="muted" style="font-size:13px;margin-top:10px;">Kreise: Hover zeigt Status-Tooltip, Klick oeffnet das zugehoerige Setup (bexio / Exchange). Die <a href="#bec-protocol-list">Protokollliste</a> ist unten.</p>
     <% } else { %>
       <p class="muted">Keine Visualisierung im Manifest.</p>
     <% } %>
@@ -132,7 +162,7 @@
         <input type="hidden" name="map_<%= target.key %>" id="bec_map_<%= target.key %>" value="<%= mapping[target.key] != null ? mapping[target.key] : '' %>">
       <% }); %>
 
-      <details class="bec-panel" <%= probeBexioOk ? '' : 'open' %>>
+      <details id="bec-setup-bexio" class="bec-panel" <%= probeBexioOk ? '' : 'open' %>>
         <summary>
           <span>bexio</span>
           <% if (probeBexioOk) { %>
@@ -149,7 +179,7 @@
 
           <details class="bec-field-sub" open>
             <summary>Kontaktfelder (bexio API) — für Zuordnung und Übernahme aktivieren</summary>
-            <div class="bec-cb-grid">
+            <div class="bec-cb-grid apiface-check-list-left">
               <% bexioFieldList.forEach(function(f) { %>
                 <label class="bec-cb-item">
                   <input type="checkbox" name="bexioEnabled" value="<%= f.key %>" <%= bexioEnabledSet.has(f.key) ? 'checked' : '' %>>
@@ -165,7 +195,7 @@
         </div>
       </details>
 
-      <details class="bec-panel" <%= probeEwsOk ? '' : 'open' %>>
+      <details id="bec-setup-exchange" class="bec-panel" <%= probeEwsOk ? '' : 'open' %>>
         <summary>
           <span>Exchange (EWS)</span>
           <% if (probeEwsOk) { %>
@@ -190,7 +220,7 @@
 
           <details class="bec-field-sub" open>
             <summary>Kontaktfelder (Exchange) — in die Synchronisation einbeziehen</summary>
-            <div class="bec-cb-grid">
+            <div class="bec-cb-grid apiface-check-list-left">
               <% exchangeFieldList.forEach(function(f) { %>
                 <label class="bec-cb-item">
                   <input type="checkbox" name="exchangeEnabled" value="<%= f.key %>" <%= exchangeEnabledSet.has(f.key) ? 'checked' : '' %>>
@@ -292,6 +322,35 @@
 <script type="application/json" id="bec-protocol-json"><%- JSON.stringify(protocolHistoryDesc) %></script>
 <script type="application/json" id="bec-default-map"><%- JSON.stringify(defMap) %></script>
 <script>
+(function () {
+  function openBecSetupPanel(id) {
+    var el = document.getElementById(id);
+    if (!el || el.tagName !== 'DETAILS') return;
+    el.open = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  function fromHash(hash) {
+    if (!hash || hash.length < 2) return;
+    var id = hash.slice(1);
+    if (id === 'bec-setup-bexio' || id === 'bec-setup-exchange') {
+      openBecSetupPanel(id);
+    }
+  }
+  document.querySelectorAll('a.bec-flow-setup-link').forEach(function (a) {
+    a.addEventListener('click', function () {
+      var href = a.getAttribute('href') || '';
+      if (href.indexOf('#bec-setup-') !== 0) return;
+      openBecSetupPanel(href.slice(1));
+    });
+  });
+  window.addEventListener('hashchange', function () { fromHash(location.hash); });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { fromHash(location.hash); });
+  } else {
+    fromHash(location.hash);
+  }
+})();
+
 (function () {
   var wrap = document.getElementById('bec-map-wrap');
   var svg = document.getElementById('bec-map-svg');

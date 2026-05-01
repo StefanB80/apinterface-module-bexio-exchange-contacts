@@ -1,5 +1,6 @@
 /**
- * Kontaktfelder bexio API 2.0 / Exchange EWS (Kontakt) für Auswahl und Sync.
+ * Kontaktfelder bexio API 2.0 / Exchange EWS (Contact) für Auswahl und Sync.
+ * Exchange-Telefonkeys entsprechen ews-javascript-api PhoneNumberKey.
  */
 
 const BEXIO_CONTACT_FIELDS = [
@@ -34,21 +35,69 @@ const BEXIO_CONTACT_FIELDS = [
   { key: "updated_at", label: "updated_at" }
 ];
 
+/** Exchange / EWS Contact — Auszug der wichtigsten setzbaren Felder (vgl. ews-javascript-api Contact) */
 const EXCHANGE_CONTACT_FIELDS = [
+  { key: "fileAs", label: "File As (Ablagename)" },
   { key: "displayName", label: "DisplayName" },
   { key: "givenName", label: "GivenName" },
+  { key: "middleName", label: "MiddleName" },
   { key: "surname", label: "Surname" },
+  { key: "initials", label: "Initials" },
+  { key: "nickName", label: "NickName" },
+  { key: "generation", label: "Generation (Suffix)" },
   { key: "companyName", label: "CompanyName" },
   { key: "jobTitle", label: "JobTitle" },
   { key: "department", label: "Department" },
-  { key: "emailAddress1", label: "EmailAddress1" },
-  { key: "emailAddress2", label: "EmailAddress2" },
-  { key: "businessPhone", label: "BusinessPhone" },
-  { key: "mobilePhone", label: "MobilePhone" },
-  { key: "homePhone", label: "HomePhone" },
-  { key: "street", label: "Geschäftsadresse Street" },
-  { key: "city", label: "Geschäftsadresse City" },
-  { key: "postalCode", label: "Geschäftsadresse PostalCode" }
+  { key: "officeLocation", label: "OfficeLocation" },
+  { key: "profession", label: "Profession" },
+  { key: "assistantName", label: "AssistantName" },
+  { key: "manager", label: "Manager" },
+  { key: "spouseName", label: "SpouseName" },
+  { key: "mileage", label: "Mileage" },
+  { key: "emailAddress1", label: "E-Mail 1 (EmailAddress1)" },
+  { key: "emailAddress2", label: "E-Mail 2 (EmailAddress2)" },
+  { key: "emailAddress3", label: "E-Mail 3 (EmailAddress3)" },
+  { key: "imAddress1", label: "IM-Adresse 1 (ImAddress1)" },
+  { key: "imAddress2", label: "IM-Adresse 2 (ImAddress2)" },
+  { key: "imAddress3", label: "IM-Adresse 3 (ImAddress3)" },
+  { key: "assistantPhone", label: "Telefon Assistent/in (AssistantPhone)" },
+  { key: "businessFax", label: "Geschäfts-Fax (BusinessFax)" },
+  { key: "businessPhone", label: "Geschäftstelefon (BusinessPhone)" },
+  { key: "businessPhone2", label: "Geschäftstelefon 2 (BusinessPhone2)" },
+  { key: "callback", label: "Rückruf (Callback)" },
+  { key: "carPhone", label: "Autotelefon (CarPhone)" },
+  { key: "companyMainPhone", label: "Zentrale (CompanyMainPhone)" },
+  { key: "homeFax", label: "Privat-Fax (HomeFax)" },
+  { key: "homePhone", label: "Privattelefon (HomePhone)" },
+  { key: "homePhone2", label: "Privattelefon 2 (HomePhone2)" },
+  { key: "isdn", label: "ISDN" },
+  { key: "mobilePhone", label: "Mobiltelefon (MobilePhone)" },
+  { key: "otherFax", label: "Weiteres Fax (OtherFax)" },
+  { key: "otherTelephone", label: "Weiteres Telefon (OtherTelephone)" },
+  { key: "pager", label: "Pager" },
+  { key: "primaryPhone", label: "Haupttelefon (PrimaryPhone)" },
+  { key: "radioPhone", label: "Funk (RadioPhone)" },
+  { key: "telex", label: "Telex" },
+  { key: "ttyTddPhone", label: "TTY/TDD" },
+  { key: "street", label: "Geschäft: Strasse" },
+  { key: "city", label: "Geschäft: Ort" },
+  { key: "postalCode", label: "Geschäft: PLZ" },
+  { key: "businessState", label: "Geschäft: Kanton/Bundesland" },
+  { key: "businessCountry", label: "Geschäft: Land/Region" },
+  { key: "homeStreet", label: "Privat: Strasse" },
+  { key: "homeCity", label: "Privat: Ort" },
+  { key: "homePostalCode", label: "Privat: PLZ" },
+  { key: "homeState", label: "Privat: Kanton/Bundesland" },
+  { key: "homeCountry", label: "Privat: Land/Region" },
+  { key: "otherStreet", label: "Weitere Adr.: Strasse" },
+  { key: "otherCity", label: "Weitere Adr.: Ort" },
+  { key: "otherPostalCode", label: "Weitere Adr.: PLZ" },
+  { key: "otherState", label: "Weitere Adr.: Kanton/Bundesland" },
+  { key: "otherCountry", label: "Weitere Adr.: Land/Region" },
+  { key: "businessHomePage", label: "Geschäfts-Webseite (BusinessHomePage)" },
+  { key: "body", label: "Notizen (EWS Body, Outlook-Kontaktnotizen)" },
+  { key: "birthday", label: "Geburtstag (Birthday)" },
+  { key: "weddingAnniversary", label: "Hochzeitstag (WeddingAnniversary)" }
 ];
 
 function allKeys(list) {

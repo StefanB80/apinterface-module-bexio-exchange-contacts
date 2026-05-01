@@ -134,22 +134,14 @@ function appendProtocolHistory(prev, entry) {
 
 function buildFieldMappingFromBody(body, prevMap) {
   const p = prevMap && typeof prevMap === "object" ? prevMap : {};
-  return normalizeFieldMapping({
-    displayName: body.map_displayName || p.displayName,
-    givenName: body.map_givenName || p.givenName,
-    surname: body.map_surname || p.surname,
-    companyName: body.map_companyName || p.companyName,
-    jobTitle: body.map_jobTitle || p.jobTitle,
-    department: body.map_department || p.department,
-    emailAddress1: body.map_emailAddress1 || p.emailAddress1,
-    emailAddress2: body.map_emailAddress2 || p.emailAddress2,
-    businessPhone: body.map_businessPhone || p.businessPhone,
-    mobilePhone: body.map_mobilePhone || p.mobilePhone,
-    homePhone: body.map_homePhone || p.homePhone,
-    street: body.map_street || p.street,
-    city: body.map_city || p.city,
-    postalCode: body.map_postalCode || p.postalCode
-  });
+  const raw = { ...p };
+  for (const { key } of EXCHANGE_CONTACT_FIELDS) {
+    const bk = `map_${key}`;
+    if (Object.prototype.hasOwnProperty.call(body, bk)) {
+      raw[key] = body[bk];
+    }
+  }
+  return normalizeFieldMapping(raw);
 }
 
 async function readRawCompanyConfig(releaseDir, companyId) {
