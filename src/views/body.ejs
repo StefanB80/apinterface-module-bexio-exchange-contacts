@@ -133,7 +133,20 @@
     color: #111827;
   }
   .bec-map-item:hover { border-color: #245dff; box-shadow: 0 2px 8px rgba(36, 93, 255, 0.12); }
-  .bec-map-item.is-picked { outline: 2px solid #245dff; outline-offset: 1px; }
+  /* Erste Wahl (Exchange-Ziel): wartet auf bexio-Quelle */
+  .bec-map-item.is-picked {
+    outline: none;
+    border: 2px solid #d97706;
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.22);
+    background: #fffbeb;
+  }
+  /* Kurz nach zweiter Wahl (Zuordnung ausloesen) */
+  .bec-map-item.is-flash-tgt,
+  .bec-map-item.is-flash-src {
+    border: 2px solid #059669;
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.22);
+    background: #ecfdf5;
+  }
   .bec-map-item.is-mapped { border-color: #8eb0ff; background: #f5f8ff; }
   .bec-map-item.is-disabled { opacity: 0.45; pointer-events: none; }
   .bec-map-item:disabled {
@@ -448,12 +461,38 @@
     return el ? String(el.value || '').trim() : '';
   }
 
+  function clearMapPathsOnly() {
+    Array.prototype.slice.call(svg.childNodes).forEach(function (node) {
+      if (node.nodeName === 'path') svg.removeChild(node);
+    });
+  }
+
+  function ensureMapArrowMarker() {
+    if (svg.querySelector('#bec-map-arrowhead')) return;
+    var defs = document.createElementNS(ns(), 'defs');
+    var marker = document.createElementNS(ns(), 'marker');
+    marker.setAttribute('id', 'bec-map-arrowhead');
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '5');
+    marker.setAttribute('markerWidth', '7');
+    marker.setAttribute('markerHeight', '7');
+    marker.setAttribute('orient', 'auto-start-reverse');
+    var mpath = document.createElementNS(ns(), 'path');
+    mpath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+    mpath.setAttribute('fill', '#2563eb');
+    marker.appendChild(mpath);
+    defs.appendChild(marker);
+    svg.insertBefore(defs, svg.firstChild);
+  }
+
   function redrawLines() {
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    clearMapPathsOnly();
     var w = wrap.clientWidth;
     var h = wrap.clientHeight;
     if (w < 2 || h < 2) return;
     svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    ensureMapArrowMarker();
 
     var tgts = wrap.querySelectorAll('.bec-map-tgt:not([disabled])');
     tgts.forEach(function (btn) {
@@ -477,8 +516,43 @@
       path.setAttribute('stroke-width', '2');
       path.setAttribute('fill', 'none');
       path.setAttribute('opacity', '0.85');
+      path.setAttribute('marker-end', 'url(#bec-map-arrowhead)');
       svg.appendChild(path);
     });
+  }
+
+  function drawFlashArrow(srcEl, tgtBtn, onDone) {
+    ensureMapArrowMarker();
+    var w = wrap.clientWidth;
+    var h = wrap.clientHeight;
+    if (w < 2 || h < 2) {
+      if (onDone) onDone();
+      return;
+    }
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    var wr = wrap.getBoundingClientRect();
+    var a = srcEl.getBoundingClientRect();
+    var b = tgtBtn.getBoundingClientRect();
+    var x1 = a.right - wr.left;
+    var y1 = a.top + a.height / 2 - wr.top;
+    var x2 = b.left - wr.left;
+    var y2 = b.top + b.height / 2 - wr.top;
+    var mid = (x1 + x2) / 2;
+    var d = 'M ' + x1 + ' ' + y1 + ' C ' + mid + ' ' + y1 + ', ' + mid + ' ' + y2 + ', ' + x2 + ' ' + y2;
+    var path = document.createElementNS(ns(), 'path');
+    path.setAttribute('id', 'bec-map-flash-path');
+    path.setAttribute('d', d);
+    path.setAttribute('stroke', '#2563eb');
+    path.setAttribute('stroke-width', '3');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('marker-end', 'url(#bec-map-arrowhead)');
+    path.setAttribute('opacity', '1');
+    svg.appendChild(path);
+    setTimeout(function () {
+      var fp = svg.querySelector('#bec-map-flash-path');
+      if (fp) fp.remove();
+      if (onDone) onDone();
+    }, 520);
   }
 
   function updateMappedClasses() {
@@ -521,10 +595,24 @@
     btn.addEventListener('click', function () {
       if (!pickedTgt) return;
       var sk = btn.getAttribute('data-bec-src');
-      setHidden(pickedTgt, sk);
-      pickedTgt = null;
-      wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
-      refresh();
+      var tgtBtn = wrap.querySelector('.bec-map-tgt[data-bec-tgt="' + pickedTgt + '"]');
+      if (!tgtBtn || tgtBtn.disabled) return;
+
+      wrap.querySelectorAll('.bec-map-item').forEach(function (b) {
+        b.classList.remove('is-flash-src', 'is-flash-tgt');
+      });
+      btn.classList.add('is-flash-src');
+      tgtBtn.classList.remove('is-picked');
+      tgtBtn.classList.add('is-flash-tgt');
+
+      drawFlashArrow(btn, tgtBtn, function () {
+        setHidden(pickedTgt, sk);
+        pickedTgt = null;
+        wrap.querySelectorAll('.bec-map-item').forEach(function (b) {
+          b.classList.remove('is-picked', 'is-flash-src', 'is-flash-tgt');
+        });
+        refresh();
+      });
     });
   });
 
