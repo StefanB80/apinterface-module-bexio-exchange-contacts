@@ -533,10 +533,11 @@
     var wr = wrap.getBoundingClientRect();
     var a = srcEl.getBoundingClientRect();
     var b = tgtBtn.getBoundingClientRect();
-    var x1 = a.right - wr.left;
-    var y1 = a.top + a.height / 2 - wr.top;
-    var x2 = b.left - wr.left;
-    var y2 = b.top + b.height / 2 - wr.top;
+    /* Klick-Reihenfolge: zuerst Exchange (tgt), dann bexio (src) — Flash-Pfeil entspricht dieser Reihenfolge */
+    var x1 = b.left - wr.left;
+    var y1 = b.top + b.height / 2 - wr.top;
+    var x2 = a.right - wr.left;
+    var y2 = a.top + a.height / 2 - wr.top;
     var mid = (x1 + x2) / 2;
     var d = 'M ' + x1 + ' ' + y1 + ' C ' + mid + ' ' + y1 + ', ' + mid + ' ' + y2 + ', ' + x2 + ' ' + y2;
     var path = document.createElementNS(ns(), 'path');
