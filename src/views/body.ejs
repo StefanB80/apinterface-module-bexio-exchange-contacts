@@ -133,8 +133,9 @@
     color: #111827;
   }
   .bec-map-item:hover { border-color: #245dff; box-shadow: 0 2px 8px rgba(36, 93, 255, 0.12); }
-  /* Erste Wahl (Exchange-Ziel): wartet auf bexio-Quelle */
-  .bec-map-item.is-picked {
+  /* Erste Wahl: entweder Exchange-Ziel oder bexio-Quelle — jeweils zweites Feld antippen */
+  .bec-map-item.is-picked,
+  .bec-map-item.is-picked-src {
     outline: none;
     border: 2px solid #d97706;
     box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.22);
@@ -329,7 +330,7 @@
           <% } %>
         </summary>
         <div style="padding: 0 4px 12px;">
-          <p class="bec-map-hint">Zuordnung wie «Linien ziehen»: zuerst ein <strong>Exchange-Feld</strong> (rechts) antippen, dann das passende <strong>bexio-Feld</strong> (links). Nur aktivierte Felder (Checkboxen oben) erscheinen. Mehrfachzuordnungen (mehrere Ziele → gleiche Quelle) sind möglich.</p>
+          <p class="bec-map-hint">Zuordnung wie «Linien ziehen»: zuerst ein Feld antippen (links <strong>bexio</strong> oder rechts <strong>Exchange</strong>), dann das passende Gegenstück. Nur aktivierte Felder (Checkboxen oben) erscheinen. Mehrfachzuordnungen (mehrere Ziele → gleiche Quelle) sind möglich.</p>
           <div class="bec-map-wrap" id="bec-map-wrap">
             <svg class="bec-map-svg-layer" id="bec-map-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
             <div class="bec-map-col">
@@ -444,6 +445,7 @@
   if (!wrap || !svg) return;
 
   var pickedTgt = null;
+  var pickedSrc = null;
 
   function ns() {
     return 'http://www.w3.org/2000/svg';
@@ -521,7 +523,8 @@
     });
   }
 
-  function drawFlashArrow(srcEl, tgtBtn, onDone) {
+  /** Pfeil von erstem zum zweiten Klick (geometrisch je nach Spaltenlage). */
+  function drawFlashArrowOrdered(firstEl, secondEl, onDone) {
     ensureMapArrowMarker();
     var w = wrap.clientWidth;
     var h = wrap.clientHeight;
@@ -531,13 +534,25 @@
     }
     svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
     var wr = wrap.getBoundingClientRect();
-    var a = srcEl.getBoundingClientRect();
-    var b = tgtBtn.getBoundingClientRect();
-    /* Klick-Reihenfolge: zuerst Exchange (tgt), dann bexio (src) — Flash-Pfeil entspricht dieser Reihenfolge */
-    var x1 = b.left - wr.left;
-    var y1 = b.top + b.height / 2 - wr.top;
-    var x2 = a.right - wr.left;
-    var y2 = a.top + a.height / 2 - wr.top;
+    var r1 = firstEl.getBoundingClientRect();
+    var r2 = secondEl.getBoundingClientRect();
+    var cx1 = r1.left + r1.width / 2;
+    var cx2 = r2.left + r2.width / 2;
+    var x1;
+    var y1;
+    var x2;
+    var y2;
+    if (cx1 < cx2) {
+      x1 = r1.right - wr.left;
+      y1 = r1.top + r1.height / 2 - wr.top;
+      x2 = r2.left - wr.left;
+      y2 = r2.top + r2.height / 2 - wr.top;
+    } else {
+      x1 = r1.left - wr.left;
+      y1 = r1.top + r1.height / 2 - wr.top;
+      x2 = r2.right - wr.left;
+      y2 = r2.top + r2.height / 2 - wr.top;
+    }
     var mid = (x1 + x2) / 2;
     var d = 'M ' + x1 + ' ' + y1 + ' C ' + mid + ' ' + y1 + ', ' + mid + ' ' + y2 + ', ' + x2 + ' ' + y2;
     var path = document.createElementNS(ns(), 'path');
@@ -581,39 +596,78 @@
   wrap.querySelectorAll('.bec-map-tgt:not([disabled])').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var k = btn.getAttribute('data-bec-tgt');
+
+      if (pickedSrc) {
+        var srcBtn0 = wrap.querySelector('.bec-map-src[data-bec-src="' + pickedSrc + '"]:not(.is-disabled)');
+        if (!srcBtn0) {
+          pickedSrc = null;
+          wrap.querySelectorAll('.bec-map-src').forEach(function (b) { b.classList.remove('is-picked-src'); });
+          return;
+        }
+        var skDone = pickedSrc;
+        pickedSrc = null;
+        wrap.querySelectorAll('.bec-map-src').forEach(function (b) { b.classList.remove('is-picked-src'); });
+        wrap.querySelectorAll('.bec-map-item').forEach(function (b) { b.classList.remove('is-flash-src', 'is-flash-tgt'); });
+        srcBtn0.classList.add('is-flash-src');
+        btn.classList.add('is-flash-tgt');
+        drawFlashArrowOrdered(srcBtn0, btn, function () {
+          setHidden(k, skDone);
+          wrap.querySelectorAll('.bec-map-item').forEach(function (b) {
+            b.classList.remove('is-picked', 'is-picked-src', 'is-flash-src', 'is-flash-tgt');
+          });
+          pickedTgt = null;
+          refresh();
+        });
+        return;
+      }
+
       if (pickedTgt === k) {
         pickedTgt = null;
         wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
         return;
       }
       pickedTgt = k;
+      pickedSrc = null;
       wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+      wrap.querySelectorAll('.bec-map-src').forEach(function (b) { b.classList.remove('is-picked-src'); });
       btn.classList.add('is-picked');
     });
   });
 
   wrap.querySelectorAll('.bec-map-src:not(.is-disabled)').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (!pickedTgt) return;
       var sk = btn.getAttribute('data-bec-src');
-      var tgtBtn = wrap.querySelector('.bec-map-tgt[data-bec-tgt="' + pickedTgt + '"]');
-      if (!tgtBtn || tgtBtn.disabled) return;
 
-      wrap.querySelectorAll('.bec-map-item').forEach(function (b) {
-        b.classList.remove('is-flash-src', 'is-flash-tgt');
-      });
-      btn.classList.add('is-flash-src');
-      tgtBtn.classList.remove('is-picked');
-      tgtBtn.classList.add('is-flash-tgt');
-
-      drawFlashArrow(btn, tgtBtn, function () {
-        setHidden(pickedTgt, sk);
+      if (pickedTgt) {
+        var tgtBtn0 = wrap.querySelector('.bec-map-tgt[data-bec-tgt="' + pickedTgt + '"]');
+        if (!tgtBtn0 || tgtBtn0.disabled) return;
+        var kDone = pickedTgt;
         pickedTgt = null;
-        wrap.querySelectorAll('.bec-map-item').forEach(function (b) {
-          b.classList.remove('is-picked', 'is-flash-src', 'is-flash-tgt');
+        wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+        wrap.querySelectorAll('.bec-map-item').forEach(function (b) { b.classList.remove('is-flash-src', 'is-flash-tgt'); });
+        tgtBtn0.classList.add('is-flash-tgt');
+        btn.classList.add('is-flash-src');
+        drawFlashArrowOrdered(tgtBtn0, btn, function () {
+          setHidden(kDone, sk);
+          wrap.querySelectorAll('.bec-map-item').forEach(function (b) {
+            b.classList.remove('is-picked', 'is-picked-src', 'is-flash-src', 'is-flash-tgt');
+          });
+          pickedSrc = null;
+          refresh();
         });
-        refresh();
-      });
+        return;
+      }
+
+      if (pickedSrc === sk) {
+        pickedSrc = null;
+        wrap.querySelectorAll('.bec-map-src').forEach(function (b) { b.classList.remove('is-picked-src'); });
+        return;
+      }
+      pickedSrc = sk;
+      pickedTgt = null;
+      wrap.querySelectorAll('.bec-map-src').forEach(function (b) { b.classList.remove('is-picked-src'); });
+      wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+      btn.classList.add('is-picked-src');
     });
   });
 
@@ -630,7 +684,9 @@
           }
         });
         pickedTgt = null;
+        pickedSrc = null;
         wrap.querySelectorAll('.bec-map-tgt').forEach(function (b) { b.classList.remove('is-picked'); });
+        wrap.querySelectorAll('.bec-map-src').forEach(function (b) { b.classList.remove('is-picked-src'); });
         refresh();
       });
     } catch (e) { /* ignore */ }
