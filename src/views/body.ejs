@@ -66,9 +66,18 @@
   .bec-okpill { display: inline-flex; align-items: center; gap: 4px; color: #1f6b33; font-size: 13px; font-weight: 700; }
   .bec-field-sub { margin-top: 10px; background: #fff; border: 1px dashed #c5d0e0; border-radius: 8px; padding: 0 10px 10px; }
   .bec-field-sub > summary { font-weight: 600; font-size: 14px; padding: 10px 4px; }
-  .bec-cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 14px; margin-top: 8px; }
-  .bec-cb-item { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35; padding: 6px 8px; border-radius: 6px; border: 1px solid #eef2f7; background: #fcfdff; }
-  .bec-cb-item input { margin-top: 3px; flex-shrink: 0; }
+  /* Mindestbreite groesser: sonst zu viele Spalten, Text bricht unleserlich */
+  .bec-cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 10px 14px; margin-top: 8px; }
+  .bec-cb-item { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.4; padding: 8px 10px; border-radius: 6px; border: 1px solid #eef2f7; background: #fcfdff; }
+  /* Core setzt input 100%-Breite — hier explizit nur schmale Checkbox */
+  .bec-cb-item input[type="checkbox"] {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex: 0 0 1.125rem;
+    padding: 0;
+    margin: 0.15rem 0 0;
+    box-sizing: border-box;
+  }
   /* Linksbuendig: volle Zellenbreite; globales Core-`label` per Spezifitaet uebersteuern */
   .bec-cb-grid.apiface-check-list-left {
     justify-items: stretch;
@@ -88,8 +97,10 @@
   }
   .bec-cb-grid.apiface-check-list-left label.bec-cb-item > span {
     text-align: left;
-    flex: 1;
+    flex: 1 1 0%;
     min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .bec-cb-grid.apiface-check-list-left label.bec-cb-item > span small {
     text-align: left;
