@@ -74,9 +74,14 @@ if [ "${BEC_DEPLOY_PHASE:-}" = "install" ]; then
       echo "ERROR: Release $rel fehlt oder hat kein src/moduleManifest.js." >&2
       exit 71
     fi
+    # Irrtuemlich angelegtes Verzeichnis "current" blockiert ln; nur Symlink ist erlaubt (Core moduleDiscovery).
+    if [ -d "$REPO_DIR/current" ] && [ ! -L "$REPO_DIR/current" ]; then
+      echo "[$(date -Is)] REPLACE_DIR current (war Verzeichnis, wird zu Symlink -> releases/$TAG)" >>"$LOG_FILE" 2>&1
+      rm -rf "$REPO_DIR/current"
+    fi
     if [ -e "$REPO_DIR/current" ] && [ ! -L "$REPO_DIR/current" ]; then
-      echo "[$(date -Is)] ERROR: current ist kein Symlink: $REPO_DIR/current" >>"$LOG_FILE" 2>&1
-      echo "ERROR: $REPO_DIR/current existiert als Verzeichnis/Datei — bitte umbenennen, Core erwartet Symlink -> releases/<Tag>." >&2
+      echo "[$(date -Is)] ERROR: current ist keine Symlink-Position: $REPO_DIR/current" >>"$LOG_FILE" 2>&1
+      echo "ERROR: $REPO_DIR/current ist eine Datei — bitte entfernen. Erwartet wird Symlink -> releases/<Tag>." >&2
       exit 70
     fi
     ln -sfnT "$rel" "$REPO_DIR/current"
