@@ -67,6 +67,20 @@ if [ "${BEC_DEPLOY_PHASE:-}" = "install" ]; then
     echo "[$(date -Is)] INSTALL tag=$TAG"
     cd "$REPO_DIR"
     sync_release_dir_from_repo
+    # Core (moduleDiscovery) bevorzugt <module>/current/src/... — ohne diesen Link bleibt eine alte current-Version aktiv.
+    rel="$REPO_DIR/releases/$TAG"
+    if [ ! -f "$rel/src/moduleManifest.js" ]; then
+      echo "[$(date -Is)] ERROR: Release unvollstaendig: $rel" >>"$LOG_FILE" 2>&1
+      echo "ERROR: Release $rel fehlt oder hat kein src/moduleManifest.js." >&2
+      exit 71
+    fi
+    if [ -e "$REPO_DIR/current" ] && [ ! -L "$REPO_DIR/current" ]; then
+      echo "[$(date -Is)] ERROR: current ist kein Symlink: $REPO_DIR/current" >>"$LOG_FILE" 2>&1
+      echo "ERROR: $REPO_DIR/current existiert als Verzeichnis/Datei — bitte umbenennen, Core erwartet Symlink -> releases/<Tag>." >&2
+      exit 70
+    fi
+    ln -sfnT "$rel" "$REPO_DIR/current"
+    echo "[$(date -Is)] CURRENT_SYMLINK $(readlink -f "$REPO_DIR/current" 2>/dev/null || readlink "$REPO_DIR/current")"
     npm_install_prod "$REPO_DIR"
     if [ -L "$REPO_DIR/current" ] || [ -d "$REPO_DIR/current" ]; then
       npm_install_prod "$(cd "$REPO_DIR/current" && pwd)"

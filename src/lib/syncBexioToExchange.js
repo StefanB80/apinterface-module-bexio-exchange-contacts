@@ -1,6 +1,8 @@
 const ews = require("ews-javascript-api");
 const { createExchangeService } = require("./exchangeServiceFactory");
 const { fetchAllContacts } = require("./bexioContacts");
+const { readBexioFieldValue } = require("./bexioFieldValue");
+const { resolveFieldMappingForBexioRow } = require("./fieldMappingBlocks");
 const { EXCHANGE_CONTACT_FIELDS, allExchangeKeys } = require("./fieldCatalog");
 
 function trim(value) {
@@ -115,26 +117,7 @@ const PHONE_TO_EWS = {
 };
 
 function readMappedValue(bexioRow, bexioField) {
-  const key = trim(bexioField);
-  if (!key) {
-    return "";
-  }
-  if (key === "full_name") {
-    const full = [trim(bexioRow.name_1), trim(bexioRow.name_2)].filter(Boolean).join(" ").trim();
-    return full;
-  }
-  const raw = bexioRow[key];
-  if (raw === undefined || raw === null) {
-    return "";
-  }
-  if (typeof raw === "object") {
-    try {
-      return trim(JSON.stringify(raw));
-    } catch {
-      return "";
-    }
-  }
-  return trim(String(raw));
+  return readBexioFieldValue(bexioRow, bexioField);
 }
 
 function normalizeFieldMapping(input) {
@@ -364,7 +347,8 @@ function applyBexioToEwsContact(bexioRow, contact, fieldMapping, enabledExchange
  */
 async function syncBexioContactsToExchange(params) {
   const log = params.log || (() => {});
-  const fieldMapping = normalizeFieldMapping(params.fieldMapping);
+  const legacyMapping = normalizeFieldMapping(params.fieldMapping);
+  const blocks = Array.isArray(params.fieldMappingBlocks) ? params.fieldMappingBlocks : null;
   const enabledExchange = normalizeEnabledExchange(params.enabledExchange);
   const service = createExchangeService({
     ewsUrl: params.ewsUrl,
@@ -388,6 +372,8 @@ async function syncBexioContactsToExchange(params) {
       continue;
     }
     try {
+      const fieldMapping =
+        blocks && blocks.length ? resolveFieldMappingForBexioRow(blocks, row) : legacyMapping;
       const existing = map[bid];
       if (existing && trim(existing.ewsItemId)) {
         const bound = await ews.Contact.Bind(

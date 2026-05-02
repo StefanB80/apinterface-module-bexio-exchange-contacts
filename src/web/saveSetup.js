@@ -14,6 +14,7 @@ const {
   allBexioKeys,
   allExchangeKeys
 } = require("../lib/fieldCatalog");
+const { normalizeFieldMappingBlocks } = require("../lib/fieldMappingBlocks");
 
 function trim(value) {
   return String(value || "").trim();
@@ -144,6 +145,23 @@ function buildFieldMappingFromBody(body, prevMap) {
   return normalizeFieldMapping(raw);
 }
 
+function parseFieldMappingBlocksFromBody(body, prev) {
+  const prevBlocks = Array.isArray(prev.fieldMappingBlocks) ? prev.fieldMappingBlocks : [];
+  const j = trim(body.fieldMappingBlocksJson || "");
+  if (j) {
+    let parsed;
+    try {
+      parsed = JSON.parse(j);
+    } catch {
+      throw new Error("fieldMappingBlocksJson ist kein gueltiges JSON.");
+    }
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    return normalizeFieldMappingBlocks(arr, prev.fieldMapping || {});
+  }
+  const fm = buildFieldMappingFromBody(body, prev.fieldMapping || {});
+  return normalizeFieldMappingBlocks(null, fm);
+}
+
 async function readRawCompanyConfig(releaseDir, companyId) {
   const id = Number(companyId);
   if (!id) {
@@ -167,6 +185,7 @@ async function loadSetup(releaseDir, companyId) {
     ewsPassword: "",
     exchangeVersion: "Exchange2016",
     fieldMapping: { ...DEFAULT_FIELD_MAPPING },
+    fieldMappingBlocks: normalizeFieldMappingBlocks(null, { ...DEFAULT_FIELD_MAPPING }),
     defaultFieldMapping: { ...DEFAULT_FIELD_MAPPING },
     bexioEnabledKeys: allBexioKeys(),
     exchangeEnabledKeys: allExchangeKeys(),
@@ -202,6 +221,10 @@ async function loadSetup(releaseDir, companyId) {
       bexioFieldCatalog: BEXIO_CONTACT_FIELDS,
       exchangeFieldCatalog: EXCHANGE_CONTACT_FIELDS
     };
+    merged.fieldMappingBlocks = normalizeFieldMappingBlocks(parsed.fieldMappingBlocks, merged.fieldMapping);
+    if (merged.fieldMappingBlocks[0] && merged.fieldMappingBlocks[0].fieldMapping) {
+      merged.fieldMapping = normalizeFieldMapping(merged.fieldMappingBlocks[0].fieldMapping);
+    }
     merged.bexioEnabledKeys = Array.isArray(parsed.bexioEnabledKeys) && parsed.bexioEnabledKeys.length
       ? parsed.bexioEnabledKeys.map(trim)
       : allBexioKeys();
@@ -287,7 +310,10 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
   }
 
   const exchangeVersion = trim(body.exchangeVersion || prev.exchangeVersion || "Exchange2016");
-  const fieldMapping = buildFieldMappingFromBody(body, prev.fieldMapping);
+  const fieldMappingBlocks = parseFieldMappingBlocksFromBody(body, prev);
+  const fieldMapping = fieldMappingBlocks[0]
+    ? normalizeFieldMapping(fieldMappingBlocks[0].fieldMapping)
+    : buildFieldMappingFromBody(body, prev.fieldMapping);
   const bexioEnabledKeys = readEnabledKeysFromBody(body, "bexioEnabled", prev.bexioEnabledKeys);
   const exchangeEnabledKeys = readEnabledKeysFromBody(body, "exchangeEnabled", prev.exchangeEnabledKeys);
 
@@ -310,6 +336,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      fieldMappingBlocks,
       bexioEnabledKeys,
       exchangeEnabledKeys,
       protocolHistory,
@@ -353,6 +380,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      fieldMappingBlocks,
       bexioEnabledKeys,
       exchangeEnabledKeys,
       protocolHistory,
@@ -396,6 +424,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      fieldMappingBlocks,
       idMap,
       enabledExchange,
       log: (line) => {
@@ -418,6 +447,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      fieldMappingBlocks,
       bexioEnabledKeys,
       exchangeEnabledKeys,
       protocolHistory,
@@ -459,6 +489,7 @@ async function saveSetup({ companyId, body, releaseDir, isPlatformAdmin }) {
       ewsPassword,
       exchangeVersion,
       fieldMapping,
+      fieldMappingBlocks,
       bexioEnabledKeys,
       exchangeEnabledKeys,
       protocolHistory,
