@@ -86,8 +86,9 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.deploy_tag.outputs.tag }}"
+          # bash explizit: funktioniert auch wenn +x auf dem Server (noch) fehlt.
           ssh -i ~/.ssh/id_ed25519 -p "${{ secrets.BEC_SSH_PORT }}" -o BatchMode=yes -o ConnectTimeout=60 -o StrictHostKeyChecking=yes "${{ secrets.BEC_SSH_USER }}@${{ secrets.BEC_SSH_HOST }}" \
-            "/opt/apps/apinterface/bexio-exchange-contacts/bin/deploy.sh \"$TAG\""
+            "bash /opt/apps/apinterface/bexio-exchange-contacts/bin/deploy.sh ${TAG}"
 
       - name: Install production dependencies in active release
         shell: bash
