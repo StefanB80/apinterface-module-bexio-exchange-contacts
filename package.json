@@ -1,6 +1,6 @@
 {
   "name": "apinterface-module-bexio-exchange-contacts",
-  "version": "1.0.18-bec",
+  "version": "1.0.19-bec",
   "private": true,
   "description": "APInterface module: bexio contacts to Exchange (on-prem EWS)",
   "main": "src/index.js",

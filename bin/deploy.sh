@@ -67,32 +67,39 @@ if [ "${BEC_DEPLOY_PHASE:-}" = "install" ]; then
     echo "[$(date -Is)] INSTALL tag=$TAG"
     cd "$REPO_DIR"
     sync_release_dir_from_repo
-    # Core (moduleDiscovery) bevorzugt <module>/current/src/... — ohne diesen Link bleibt eine alte current-Version aktiv.
     rel="$REPO_DIR/releases/$TAG"
     if [ ! -f "$rel/src/moduleManifest.js" ]; then
       echo "[$(date -Is)] ERROR: Release unvollstaendig: $rel" >>"$LOG_FILE" 2>&1
       echo "ERROR: Release $rel fehlt oder hat kein src/moduleManifest.js." >&2
       exit 71
     fi
-    # Irrtuemlich angelegtes Verzeichnis "current" blockiert ln; nur Symlink ist erlaubt (Core moduleDiscovery).
     if [ -d "$REPO_DIR/current" ] && [ ! -L "$REPO_DIR/current" ]; then
-      echo "[$(date -Is)] REPLACE_DIR current (war Verzeichnis, wird zu Symlink -> releases/$TAG)" >>"$LOG_FILE" 2>&1
+      echo "[$(date -Is)] REPLACE_DIR current (war Verzeichnis)" >>"$LOG_FILE" 2>&1
       rm -rf "$REPO_DIR/current"
     fi
     if [ -e "$REPO_DIR/current" ] && [ ! -L "$REPO_DIR/current" ]; then
-      echo "[$(date -Is)] ERROR: current ist keine Symlink-Position: $REPO_DIR/current" >>"$LOG_FILE" 2>&1
-      echo "ERROR: $REPO_DIR/current ist eine Datei — bitte entfernen. Erwartet wird Symlink -> releases/<Tag>." >&2
+      echo "ERROR: $REPO_DIR/current ist eine Datei — bitte entfernen." >&2
       exit 70
     fi
-    ln -sfnT "$rel" "$REPO_DIR/current"
-    echo "[$(date -Is)] CURRENT_SYMLINK $(readlink -f "$REPO_DIR/current" 2>/dev/null || readlink "$REPO_DIR/current")"
+    rm -f "$REPO_DIR/current"
+    # Relativer Symlink: funktioniert mit allen ln-Varianten; kein -T noetig.
+    (cd "$REPO_DIR" && ln -snf "releases/$TAG" current)
+    echo "[$(date -Is)] CURRENT_SYMLINK $(readlink "$REPO_DIR/current" 2>/dev/null || true)"
+    if [ ! -L "$REPO_DIR/current" ] || [ ! -f "$REPO_DIR/current/package.json" ]; then
+      echo "ERROR: Symlink current fehlgeschlagen oder kein package.json unter current/." >&2
+      echo "  readlink: $(readlink "$REPO_DIR/current" 2>/dev/null || echo '?')" >&2
+      ls -la "$REPO_DIR" >&2 || true
+      exit 72
+    fi
     npm_install_prod "$REPO_DIR"
     if [ -L "$REPO_DIR/current" ] || [ -d "$REPO_DIR/current" ]; then
       npm_install_prod "$(cd "$REPO_DIR/current" && pwd)"
     fi
     echo "[$(date -Is)] SUCCESS install tag=$TAG"
-  } >>"$LOG_FILE" 2>&1
-  echo "Deploy successful: $TAG"
+  } >>"$LOG_FILE"
+
+  ver="$(grep -m1 '"version"' "$REPO_DIR/current/package.json" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  echo "Deploy successful: $TAG (current -> $(readlink "$REPO_DIR/current"), package $ver)" >&2
   exit 0
 fi
 
@@ -102,29 +109,37 @@ if ! flock -n 9; then
   exit 66
 fi
 
+cd "$REPO_DIR"
+
+if [ ! -d ".git" ]; then
+  echo "Not a git repository: $REPO_DIR" >&2
+  exit 67
+fi
+
+if [ ! -f "$DEPLOY_KEY" ]; then
+  echo "Missing deploy key: $DEPLOY_KEY" >&2
+  echo "Setze DEPLOY_KEY auf den Pfad zum Deploy-Key oder lege die Datei unter ~/.ssh/bec_repo_deploy_key ab." >&2
+  exit 68
+fi
+
+export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+
+set +e
 {
   echo "[$(date -Is)] START deploy tag=$TAG"
-  cd "$REPO_DIR"
-
-  if [ ! -d ".git" ]; then
-    echo "Not a git repository: $REPO_DIR" >&2
-    exit 67
-  fi
-
-  if [ ! -f "$DEPLOY_KEY" ]; then
-    echo "Missing deploy key: $DEPLOY_KEY" >&2
-    exit 68
-  fi
-
-  export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
-
   git fetch --prune --tags origin
   git rev-parse -q --verify "refs/tags/$TAG" >/dev/null
-  # -f: lokale Aenderungen an getrackten Dateien (z. B. manuell geaendertes bin/deploy.sh) blockieren den Deploy nicht
+  # -f: lokale Aenderungen an getrackten Dateien blockieren den Deploy nicht
   git checkout -f --detach "$TAG"
-
   echo "[$(date -Is)] CHECKOUT_OK tag=$TAG"
 } >>"$LOG_FILE" 2>&1
+GIT_EC=$?
+set -e
+if [ "$GIT_EC" -ne 0 ]; then
+  echo "ERROR: git fetch/checkout fehlgeschlagen (Exit $GIT_EC). Log: $LOG_FILE" >&2
+  tail -40 "$LOG_FILE" >&2
+  exit "$GIT_EC"
+fi
 
 export BEC_DEPLOY_PHASE=install
 exec bash "$SELF" "$TAG"
