@@ -115,7 +115,8 @@ fi
 
   git fetch --prune --tags origin
   git rev-parse -q --verify "refs/tags/$TAG" >/dev/null
-  git checkout --detach "$TAG"
+  # -f: lokale Aenderungen an getrackten Dateien (z. B. manuell geaendertes bin/deploy.sh) blockieren den Deploy nicht
+  git checkout -f --detach "$TAG"
 
   echo "[$(date -Is)] CHECKOUT_OK tag=$TAG"
 } >>"$LOG_FILE" 2>&1
